@@ -1,41 +1,46 @@
+using SolarGridLK.Infrastructure.MongoDB;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+// MongoDB Configuration
+builder.Services.Configure<MongoDbSettings>(
+    builder.Configuration.GetSection("MongoDbSettings"));
+
+var mongoSettings = builder.Configuration
+    .GetSection("MongoDbSettings")
+    .Get<MongoDbSettings>();
+
+if (mongoSettings == null ||
+    string.IsNullOrWhiteSpace(mongoSettings.ConnectionString) ||
+    string.IsNullOrWhiteSpace(mongoSettings.DatabaseName))
+{
+    throw new InvalidOperationException(
+        "MongoDB configuration is missing. " +
+        "Please configure MongoDbSettings:ConnectionString " +
+        "and MongoDbSettings:DatabaseName.");
+}
+
+builder.Services.AddSingleton(mongoSettings);
+
+// MongoDB context
+builder.Services.AddSingleton<MongoDbContext>();
+
+// Controllers
+builder.Services.AddControllers();
+
+
+// Authorization
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
 
+// HTTP Request Pipeline
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+app.UseAuthorization();
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+// Map controller endpoints
+app.MapControllers();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
