@@ -1,4 +1,5 @@
 using SolarGridLK.Infrastructure.MongoDB;
+using SolarGridLK.API.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,8 +33,22 @@ builder.Services.AddControllers();
 // Authorization
 builder.Services.AddAuthorization();
 
+// Swagger
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Build Application
 var app = builder.Build();
 
+// Exception Handling Middleware
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+// Swagger
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // HTTP Request Pipeline
 app.UseHttpsRedirection();
