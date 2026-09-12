@@ -1,5 +1,8 @@
 using SolarGridLK.Infrastructure.MongoDB;
 using SolarGridLK.API.Middleware;
+using SolarGridLK.Application.Interfaces;
+using SolarGridLK.Infrastructure.Security;
+using SolarGridLK.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +28,10 @@ builder.Services.AddSingleton(mongoSettings);
 
 // MongoDB context
 builder.Services.AddSingleton<MongoDbContext>();
+
+// REG Interfaces
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
 
 // Controllers
 builder.Services.AddControllers();
