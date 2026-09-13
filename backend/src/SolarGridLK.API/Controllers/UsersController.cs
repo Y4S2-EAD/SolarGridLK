@@ -1,56 +1,134 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SolarGridLK.Application.DTOs;
+using SolarGridLK.Application.Interfaces;
 
 namespace SolarGridLK.API.Controllers;
 
 [ApiController]
 [Route("api/users")]
+[Authorize(Roles = "Backoffice")]
 public class UsersController : ControllerBase
 {
-    [HttpGet]
-    public IActionResult GetUsers()
+    private readonly IUserService _userService;
+
+    public UsersController(IUserService userService)
     {
-        return Ok(new
-        {
-            message = "Get users endpoint is ready."
-        });
+        _userService = userService;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetUsers()
+    {
+        // Return all system users to an authorized Backoffice user.
+        var users = await _userService.GetAllUsersAsync();
+
+        return Ok(ApiResponse<List<UserDto>>.Ok(
+            users,
+            "Users retrieved successfully."));
     }
 
     [HttpGet("{id}")]
-    public IActionResult GetUser(string id)
+    public async Task<IActionResult> GetUser(string id)
     {
-        return Ok(new
+        // Return one system user using the supplied identifier.
+        var user = await _userService.GetUserByIdAsync(id);
+
+        if (user == null)
         {
-            message = "Get user endpoint is ready.",
-            id
-        });
+            return NotFound(new
+            {
+                success = false,
+                message = "User not found."
+            });
+        }
+
+        return Ok(ApiResponse<UserDto>.Ok(
+            user,
+            "User retrieved successfully."));
     }
 
     [HttpPost]
-    public IActionResult CreateUser()
+    public async Task<IActionResult> CreateUser(
+        [FromBody] CreateUserDto request)
     {
-        return Ok(new
+        // Create a new Backoffice or Grid Operator account.
+        try
         {
-            message = "Create user endpoint is ready."
-        });
+            var user = await _userService
+                .CreateUserAsync(request);
+
+            return CreatedAtAction(
+                nameof(GetUser),
+                new { id = user.Id },
+                ApiResponse<UserDto>.Ok(
+                    user,
+                    "User created successfully."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
     }
 
     [HttpPut("{id}")]
-    public IActionResult UpdateUser(string id)
+    public async Task<IActionResult> UpdateUser(
+        string id,
+        [FromBody] UpdateUserDto request)
     {
-        return Ok(new
+        // Update an existing Backoffice or Grid Operator account.
+        try
         {
-            message = "Update user endpoint is ready.",
-            id
-        });
+            var user = await _userService
+                .UpdateUserAsync(id, request);
+
+            if (user == null)
+            {
+                return NotFound(new
+                {
+                    success = false,
+                    message = "User not found."
+                });
+            }
+
+            return Ok(ApiResponse<UserDto>.Ok(
+                user,
+                "User updated successfully."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
     }
 
     [HttpDelete("{id}")]
-    public IActionResult DeleteUser(string id)
+    public async Task<IActionResult> DeleteUser(string id)
     {
+        // Delete an existing system user account.
+        var deleted = await _userService
+            .DeleteUserAsync(id);
+
+        if (!deleted)
+        {
+            return NotFound(new
+            {
+                success = false,
+                message = "User not found."
+            });
+        }
+
         return Ok(new
         {
-            message = "Delete user endpoint is ready.",
-            id
+            success = true,
+            message = "User deleted successfully."
         });
     }
 }

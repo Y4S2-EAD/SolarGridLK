@@ -3,6 +3,10 @@ using SolarGridLK.API.Middleware;
 using SolarGridLK.Application.Interfaces;
 using SolarGridLK.Infrastructure.Security;
 using SolarGridLK.Infrastructure.Repositories;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using SolarGridLK.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,9 +33,54 @@ builder.Services.AddSingleton(mongoSettings);
 // MongoDB context
 builder.Services.AddSingleton<MongoDbContext>();
 
+// JWT
+builder.Services.Configure<JwtSettings>(
+    builder.Configuration.GetSection("JwtSettings"));
+
+var jwtSettings = builder.Configuration
+    .GetSection("JwtSettings")
+    .Get<JwtSettings>();
+
+if (jwtSettings == null ||
+    string.IsNullOrWhiteSpace(jwtSettings.Key) ||
+    string.IsNullOrWhiteSpace(jwtSettings.Issuer) ||
+    string.IsNullOrWhiteSpace(jwtSettings.Audience))
+{
+    throw new InvalidOperationException(
+        "JWT configuration is missing.");
+}
+
+builder.Services.AddSingleton(jwtSettings);
+
+builder.Services.AddScoped<IJwtService, JwtService>();
+
+// Config ASP JWT Auth
+builder.Services.AddAuthentication(
+    JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+
+                ValidIssuer = jwtSettings.Issuer,
+                ValidAudience = jwtSettings.Audience,
+
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(jwtSettings.Key))
+            };
+    });
+
+builder.Services.AddAuthorization();
+
 // REG Interfaces
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUserService, UserService>();
 
 // Controllers
 builder.Services.AddControllers();
@@ -47,6 +96,9 @@ builder.Services.AddSwaggerGen();
 // Build Application
 var app = builder.Build();
 
+// HTTP Request Pipeline
+app.UseHttpsRedirection();
+
 // Exception Handling Middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
@@ -57,8 +109,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// HTTP Request Pipeline
-app.UseHttpsRedirection();
+app.UseAuthentication();
 
 app.UseAuthorization();
 
