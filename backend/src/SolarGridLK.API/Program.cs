@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using SolarGridLK.Infrastructure.Services;
+using SolarGridLK.Infrastructure.Seeding;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -81,6 +82,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<DatabaseSeeder>();
 
 // Controllers
 builder.Services.AddControllers();
@@ -95,6 +97,15 @@ builder.Services.AddSwaggerGen();
 
 // Build Application
 var app = builder.Build();
+
+// Seeder Run
+using (var scope = app.Services.CreateScope())
+{
+    var databaseSeeder = scope.ServiceProvider
+        .GetRequiredService<DatabaseSeeder>();
+
+    await databaseSeeder.SeedAsync();
+}
 
 // HTTP Request Pipeline
 app.UseHttpsRedirection();
