@@ -89,7 +89,31 @@ builder.Services.AddControllers();
 
 
 // Authorization
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(
+        "BackofficeOnly",
+        policy =>
+        {
+            policy.RequireRole("Backoffice");
+        });
+
+    options.AddPolicy(
+        "GridOperatorOnly",
+        policy =>
+        {
+            policy.RequireRole("GridOperator");
+        });
+
+    options.AddPolicy(
+        "BackofficeOrGridOperator",
+        policy =>
+        {
+            policy.RequireRole(
+                "Backoffice",
+                "GridOperator");
+        });
+});
 
 // Swagger
 builder.Services.AddEndpointsApiExplorer();

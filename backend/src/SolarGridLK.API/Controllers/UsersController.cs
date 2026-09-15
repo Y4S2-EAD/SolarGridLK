@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
 
@@ -7,7 +8,7 @@ namespace SolarGridLK.API.Controllers;
 
 [ApiController]
 [Route("api/users")]
-[Authorize(Roles = "Backoffice")]
+[Authorize(Policy = "BackofficeOnly")]
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
@@ -112,7 +113,19 @@ public class UsersController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteUser(string id)
     {
-        // Delete an existing system user account.
+        // Prevent a Backoffice user from deleting their own account.
+        var currentUserId = User.FindFirst(
+            ClaimTypes.NameIdentifier)?.Value;
+
+        if (currentUserId == id)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "You cannot delete your own account."
+            });
+        }
+
         var deleted = await _userService
             .DeleteUserAsync(id);
 

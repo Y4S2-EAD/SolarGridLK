@@ -1,11 +1,3 @@
-/*
- * File: DatabaseSeeder.cs
- * Project: SolarGridLK.Infrastructure
- * Description: Seeds initial system users into MongoDB.
- * Author: Sasin Ransara
- * Date: 2026-09-20
- */
-
 using MongoDB.Driver;
 using SolarGridLK.Application.Interfaces;
 using SolarGridLK.Domain.Entities;
