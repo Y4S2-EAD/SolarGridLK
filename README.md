@@ -68,6 +68,6 @@ README.md
 | Sasin | Identity & Access (Login, User Management, API skeleton, IIS/MongoDB setup) |
 | Ishara | Prosumer & Node Management |
 | Nipuni | Reservations & Dashboards |
-| Sasin | Operator Tools, Maps & QR |
+| Buwaneka | Operator Tools, Maps & QR |
 
 > Individual contributions must be clearly mentioned per the assignment requirements — keep this table accurate and specific (not just "helped with everything").
