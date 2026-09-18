@@ -52,6 +52,17 @@ const BackofficeLayout = () => {
                     </Link>
 
                     <Link
+                        to="/backoffice/prosumers"
+                        className={`block px-3 py-2 rounded-md text-sm transition-colors ${
+                            isActive("/backoffice/prosumers")
+                                ? "bg-[#f4a93b]/10 text-[#f4a93b] font-medium"
+                                : "text-[#a7b2c7] hover:bg-[#132038] hover:text-[#e7ecf5]"
+                        }`}
+                    >
+                        Prosumer Management
+                    </Link>
+
+                    <Link
                         to="/backoffice/reservations"
                         className={`block px-3 py-2 rounded-md text-sm transition-colors ${
                             isActive("/backoffice/reservations")
