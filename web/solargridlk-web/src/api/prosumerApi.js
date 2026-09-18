@@ -15,3 +15,13 @@ export const createProsumer = async (prosumerData) => {
 
     return response.data;
 };
+
+export const updateProsumer = async (nic, prosumerData) => {
+    // Update profile fields. The NIC in the route is not replaced.
+    const response = await apiClient.put(
+        `/prosumers/${encodeURIComponent(nic)}`,
+        prosumerData
+    );
+
+    return response.data;
+};

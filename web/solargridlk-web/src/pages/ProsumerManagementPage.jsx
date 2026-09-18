@@ -1,5 +1,11 @@
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createProsumer, getProsumerByNic } from "../api/prosumerApi";
+import {
+    inputClassName,
+    profileValidationMessage,
+    sriLankanNicPattern,
+} from "./prosumerValidation";
 
 const emptyForm = {
     nic: "",
@@ -9,14 +15,6 @@ const emptyForm = {
     address: "",
     password: "",
 };
-
-const inputClassName =
-    "w-full box-border px-3.5 py-2.5 bg-[#101a30] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-[0.95rem] placeholder-[#55637f] focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
-
-// Old NIC: 123456789V. New NIC: 123456789012.
-const sriLankanNicPattern = /^(\d{9}[Vv]|\d{12})$/;
-const sriLankanMobilePattern = /^0\d{9}$/;
-const emailPattern = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 const tableColumns = ["NIC", "Full name", "Email", "Phone", "Status", "Actions"];
 
@@ -34,9 +32,10 @@ const SkeletonRow = () => (
 );
 
 const actionButtonClass =
-    "text-xs text-[#a7b2c7] border border-[#2a3a56] rounded-md px-2.5 py-1.5";
+    "text-xs text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] rounded-md px-2.5 py-1.5 transition-colors";
 
 const ProsumerManagementPage = () => {
+    const navigate = useNavigate();
     const submittingRef = useRef(false);
 
     const [nicInput, setNicInput] = useState("");
@@ -173,18 +172,10 @@ const ProsumerManagementPage = () => {
             return;
         }
 
-        if (!payload.fullName) {
-            setError("Full name is required.");
-            return;
-        }
+        const profileError = profileValidationMessage(payload);
 
-        if (payload.email && !emailPattern.test(payload.email)) {
-            setError("Enter a valid email address, such as name@gmail.com.");
-            return;
-        }
-
-        if (payload.phoneNumber && !sriLankanMobilePattern.test(payload.phoneNumber)) {
-            setError("Enter a 10-digit mobile number starting with 0.");
+        if (profileError) {
+            setError(profileError);
             return;
         }
 
@@ -435,12 +426,34 @@ const ProsumerManagementPage = () => {
                                         </span>
                                     </td>
                                     <td className="px-5 py-3">
-                                        {/* Actions are visible only. They do not call the API yet. */}
                                         <div className="flex items-center justify-end gap-1.5">
-                                            <button type="button" className={actionButtonClass}>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    navigate(
+                                                        `/backoffice/prosumers/${encodeURIComponent(prosumer.nic)}`
+                                                    )
+                                                }
+                                                className={actionButtonClass}
+                                            >
                                                 View
                                             </button>
-                                            <button type="button" className={actionButtonClass}>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    navigate(
+                                                        `/backoffice/prosumers/${encodeURIComponent(prosumer.nic)}`,
+                                                        { state: { openEdit: true } }
+                                                    )
+                                                }
+                                                disabled={!isActive}
+                                                title={
+                                                    isActive
+                                                        ? undefined
+                                                        : "A deactivated account cannot be updated."
+                                                }
+                                                className={`${actionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+                                            >
                                                 Edit
                                             </button>
                                             {isActive ? (
