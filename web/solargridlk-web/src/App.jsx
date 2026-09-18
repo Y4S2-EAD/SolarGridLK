@@ -1,19 +1,67 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import {
+    BrowserRouter,
+    Navigate,
+    Route,
+    Routes,
+} from "react-router-dom";
 
-function App() {
-  const [count, setCount] = useState(0)
+import { AuthProvider } from "./context/AuthContext";
 
-  return (
-    <>
-      <h1 class="text-3xl font-bold underline text-clifford">
-        SolarGridLK
-      </h1>
-    </>
-  )
-}
+import LoginPage from "./pages/LoginPage";
+import BackofficeDashboard from "./pages/BackofficeDashboard";
+import GridOperatorDashboard from "./pages/GridOperatorDashboard";
 
-export default App
+import ProtectedRoute from "./components/ProtectedRoute";
+
+const App = () => {
+    return (
+        <BrowserRouter>
+            <AuthProvider>
+                <Routes>
+                    <Route
+                        path="/login"
+                        element={<LoginPage />}
+                    />
+
+                    <Route
+                        path="/backoffice"
+                        element={
+                            <ProtectedRoute
+                                allowedRoles={[
+                                    "Backoffice",
+                                ]}
+                            >
+                                <BackofficeDashboard />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/grid-operator"
+                        element={
+                            <ProtectedRoute
+                                allowedRoles={[
+                                    "GridOperator",
+                                ]}
+                            >
+                                <GridOperatorDashboard />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="*"
+                        element={
+                            <Navigate
+                                to="/login"
+                                replace
+                            />
+                        }
+                    />
+                </Routes>
+            </AuthProvider>
+        </BrowserRouter>
+    );
+};
+
+export default App;
