@@ -1,5 +1,22 @@
-import { useState } from "react";
-import { getProsumerByNic } from "../api/prosumerApi";
+import { useRef, useState } from "react";
+import { createProsumer, getProsumerByNic } from "../api/prosumerApi";
+
+const emptyForm = {
+    nic: "",
+    fullName: "",
+    email: "",
+    phoneNumber: "",
+    address: "",
+    password: "",
+};
+
+const inputClassName =
+    "w-full box-border px-3.5 py-2.5 bg-[#101a30] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-[0.95rem] placeholder-[#55637f] focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
+
+// Old NIC: 123456789V. New NIC: 123456789012.
+const sriLankanNicPattern = /^(\d{9}[Vv]|\d{12})$/;
+const sriLankanMobilePattern = /^0\d{9}$/;
+const emailPattern = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 const tableColumns = ["NIC", "Full name", "Email", "Phone", "Status", "Actions"];
 
@@ -20,12 +37,19 @@ const actionButtonClass =
     "text-xs text-[#a7b2c7] border border-[#2a3a56] rounded-md px-2.5 py-1.5";
 
 const ProsumerManagementPage = () => {
+    const submittingRef = useRef(false);
+
     const [nicInput, setNicInput] = useState("");
     const [searchedNic, setSearchedNic] = useState("");
     const [prosumer, setProsumer] = useState(null);
     const [notFound, setNotFound] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+
+    const [formData, setFormData] = useState(emptyForm);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     const lookupProsumer = async (nic) => {
         const trimmedNic = nic.trim();
@@ -86,11 +110,147 @@ const ProsumerManagementPage = () => {
     };
 
     const handleRefresh = () => {
-        if (!searchedNic || loading) {
+        if (!searchedNic || loading || saving) {
             return;
         }
 
         lookupProsumer(searchedNic);
+    };
+
+    const handleFormChange = (event) => {
+        const { name, value } = event.target;
+
+        setFormData((previous) => ({
+            ...previous,
+            [name]: value,
+        }));
+    };
+
+    const closeCreateForm = () => {
+        if (saving) {
+            return;
+        }
+
+        setFormData(emptyForm);
+        setError("");
+        setIsFormOpen(false);
+    };
+
+    const openCreateForm = () => {
+        if (saving) {
+            return;
+        }
+
+        setFormData(emptyForm);
+        setError("");
+        setSuccess("");
+        setIsFormOpen(true);
+    };
+
+    const handleCreate = async (event) => {
+        event.preventDefault();
+
+        if (submittingRef.current) {
+            return;
+        }
+
+        const payload = {
+            nic: formData.nic.trim().toUpperCase(),
+            fullName: formData.fullName.trim(),
+            email: formData.email.trim(),
+            phoneNumber: formData.phoneNumber.trim(),
+            address: formData.address.trim(),
+            password: formData.password,
+        };
+
+        if (!payload.nic) {
+            setError("NIC is required.");
+            return;
+        }
+
+        if (!sriLankanNicPattern.test(payload.nic)) {
+            setError("Enter a valid Sri Lankan NIC. Use 9 digits followed by V, or 12 digits.");
+            return;
+        }
+
+        if (!payload.fullName) {
+            setError("Full name is required.");
+            return;
+        }
+
+        if (payload.email && !emailPattern.test(payload.email)) {
+            setError("Enter a valid email address, such as name@gmail.com.");
+            return;
+        }
+
+        if (payload.phoneNumber && !sriLankanMobilePattern.test(payload.phoneNumber)) {
+            setError("Enter a 10-digit mobile number starting with 0.");
+            return;
+        }
+
+        if (!payload.password.trim()) {
+            setError("Password is required.");
+            return;
+        }
+
+        submittingRef.current = true;
+        setSaving(true);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await createProsumer(payload);
+
+            if (!response.success || !response.data) {
+                setError(response.message || "Unable to create prosumer.");
+                return;
+            }
+
+            const createdNic = response.data.nic || payload.nic;
+
+            setSuccess("Prosumer created successfully.");
+            setFormData(emptyForm);
+            setIsFormOpen(false);
+            setNicInput(createdNic);
+            setSearchedNic(createdNic);
+            setProsumer(response.data);
+            setNotFound(false);
+
+            // Reload the created account the same way a list refresh would.
+            try {
+                const refreshed = await getProsumerByNic(createdNic);
+
+                if (refreshed.success && refreshed.data) {
+                    setProsumer(refreshed.data);
+                    setSearchedNic(refreshed.data.nic || createdNic);
+                }
+            } catch (refreshError) {
+                console.error("Created prosumer could not be reloaded:", refreshError);
+            }
+        } catch (requestError) {
+            console.error("Create prosumer failed:", requestError);
+
+            const status = requestError.response?.status;
+            const data = requestError.response?.data;
+            const validationMessage = data?.errors
+                ? Object.values(data.errors).flat().join(" ")
+                : "";
+
+            if (status === 401) {
+                setError("Your session has expired. Please log in again.");
+            } else if (status === 403) {
+                setError("You do not have permission to create prosumers.");
+            } else {
+                setError(
+                    data?.message ||
+                        validationMessage ||
+                        "Unable to create the prosumer."
+                );
+            }
+        } finally {
+            submittingRef.current = false;
+            setSaving(false);
+        }
     };
 
     const isActive = prosumer?.status === "Active";
@@ -108,10 +268,11 @@ const ProsumerManagementPage = () => {
                     </p>
                 </div>
 
-                {/* Create is reserved for a later step and does not call the API yet. */}
                 <button
                     type="button"
-                    className="flex items-center gap-1.5 shrink-0 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
+                    onClick={openCreateForm}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 shrink-0 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
                 >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                         <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -120,7 +281,20 @@ const ProsumerManagementPage = () => {
                 </button>
             </div>
 
-            {error && (
+            {success && (
+                <div className="bg-emerald-400/10 border border-emerald-400/30 text-emerald-300 px-4 py-2.5 rounded-md text-sm flex items-center justify-between">
+                    {success}
+                    <button
+                        type="button"
+                        onClick={() => setSuccess("")}
+                        className="text-emerald-300/70 hover:text-emerald-300"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
+
+            {error && !isFormOpen && (
                 <div className="bg-red-600/10 border border-red-600/40 text-red-300 px-4 py-2.5 rounded-md text-sm flex items-center justify-between">
                     {error}
                     <button
@@ -292,6 +466,175 @@ const ProsumerManagementPage = () => {
                     </table>
                 </div>
             </div>
+
+            {isFormOpen && (
+                <>
+                    <div
+                        className="fixed inset-0 bg-black/50 z-40"
+                        onClick={saving ? undefined : closeCreateForm}
+                    />
+                    <div className="fixed top-0 right-0 h-full w-full max-w-md bg-[#0e1730] border-l border-[#1c2942] z-50 flex flex-col">
+                        <div className="flex items-center justify-between px-6 py-5 border-b border-[#1c2942]">
+                            <h2 className="font-grotesk text-lg font-semibold">Create prosumer</h2>
+                            <button
+                                type="button"
+                                onClick={closeCreateForm}
+                                disabled={saving}
+                                className="text-[#7c8ba6] hover:text-[#e7ecf5] disabled:opacity-40 transition-colors"
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                    <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <form
+                            id="create-prosumer-form"
+                            onSubmit={handleCreate}
+                            className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-5"
+                        >
+                            {error && (
+                                <div className="bg-red-600/10 border border-red-600/40 text-red-300 px-3.5 py-2.5 rounded-md text-sm">
+                                    {error}
+                                </div>
+                            )}
+
+                            <div>
+                                <label htmlFor="nic" className="block text-sm text-[#a7b2c7] mb-1.5">
+                                    NIC
+                                </label>
+                                <input
+                                    id="nic"
+                                    name="nic"
+                                    type="text"
+                                    value={formData.nic}
+                                    onChange={handleFormChange}
+                                    disabled={saving}
+                                    required
+                                    maxLength={12}
+                                    placeholder="123456789V or 123456789012"
+                                    className={inputClassName}
+                                />
+                                <p className="mt-1.5 text-xs text-[#7c8ba6]">
+                                    Old NIC: 9 digits and V. New NIC: 12 digits.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label htmlFor="fullName" className="block text-sm text-[#a7b2c7] mb-1.5">
+                                    Full name
+                                </label>
+                                <input
+                                    id="fullName"
+                                    name="fullName"
+                                    type="text"
+                                    value={formData.fullName}
+                                    onChange={handleFormChange}
+                                    disabled={saving}
+                                    required
+                                    className={inputClassName}
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="email" className="block text-sm text-[#a7b2c7] mb-1.5">
+                                    Email
+                                </label>
+                                <input
+                                    id="email"
+                                    name="email"
+                                    type="text"
+                                    inputMode="email"
+                                    autoComplete="email"
+                                    value={formData.email}
+                                    onChange={handleFormChange}
+                                    disabled={saving}
+                                    placeholder="name@gmail.com"
+                                    className={inputClassName}
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="phoneNumber" className="block text-sm text-[#a7b2c7] mb-1.5">
+                                    Phone
+                                </label>
+                                <input
+                                    id="phoneNumber"
+                                    name="phoneNumber"
+                                    type="tel"
+                                    inputMode="numeric"
+                                    value={formData.phoneNumber}
+                                    onChange={handleFormChange}
+                                    disabled={saving}
+                                    maxLength={10}
+                                    placeholder="0771234567"
+                                    className={inputClassName}
+                                />
+                                <p className="mt-1.5 text-xs text-[#7c8ba6]">
+                                    10 digits starting with 0.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label htmlFor="address" className="block text-sm text-[#a7b2c7] mb-1.5">
+                                    Address
+                                </label>
+                                <input
+                                    id="address"
+                                    name="address"
+                                    type="text"
+                                    value={formData.address}
+                                    onChange={handleFormChange}
+                                    disabled={saving}
+                                    className={inputClassName}
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="password" className="block text-sm text-[#a7b2c7] mb-1.5">
+                                    Password
+                                </label>
+                                <input
+                                    id="password"
+                                    name="password"
+                                    type="password"
+                                    value={formData.password}
+                                    onChange={handleFormChange}
+                                    disabled={saving}
+                                    required
+                                    autoComplete="new-password"
+                                    className={inputClassName}
+                                />
+                            </div>
+                        </form>
+
+                        <div className="flex items-center gap-3 px-6 py-5 border-t border-[#1c2942]">
+                            <button
+                                type="button"
+                                onClick={closeCreateForm}
+                                disabled={saving}
+                                className="text-sm text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] rounded-md px-4 py-2.5 transition-colors disabled:opacity-40"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                form="create-prosumer-form"
+                                disabled={saving}
+                                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] font-semibold text-sm rounded-md transition-colors"
+                            >
+                                {saving && (
+                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                                    </svg>
+                                )}
+                                {saving ? "Saving…" : "Create prosumer"}
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 };
