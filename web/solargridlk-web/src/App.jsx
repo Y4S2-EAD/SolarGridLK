@@ -13,6 +13,7 @@ import GridOperatorDashboard from "./pages/GridOperatorDashboard";
 import UserManagementPage from "./pages/UserManagementPage";
 
 import ProtectedRoute from "./components/ProtectedRoute";
+import BackofficeLayout from "./components/BackofficeLayout";
 
 const App = () => {
     return (
@@ -32,10 +33,24 @@ const App = () => {
                                     "Backoffice",
                                 ]}
                             >
-                                <BackofficeDashboard />
+                                <BackofficeLayout />
                             </ProtectedRoute>
                         }
-                    />
+                    >
+                        <Route
+                            index
+                            element={
+                                <BackofficeDashboard />
+                            }
+                        />
+
+                        <Route
+                            path="users"
+                            element={
+                                <UserManagementPage />
+                            }
+                        />
+                    </Route>
 
                     <Route
                         path="/grid-operator"
@@ -57,19 +72,6 @@ const App = () => {
                                 to="/login"
                                 replace
                             />
-                        }
-                    />
-
-                    <Route
-                        path="/backoffice/users"
-                        element={
-                            <ProtectedRoute
-                                allowedRoles={[
-                                    "Backoffice",
-                                ]}
-                            >
-                                <UserManagementPage />
-                            </ProtectedRoute>
                         }
                     />
                 </Routes>
