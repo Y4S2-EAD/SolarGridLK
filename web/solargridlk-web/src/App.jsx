@@ -10,6 +10,7 @@ import { AuthProvider } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import BackofficeDashboard from "./pages/BackofficeDashboard";
 import GridOperatorDashboard from "./pages/GridOperatorDashboard";
+import UserManagementPage from "./pages/UserManagementPage";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -56,6 +57,19 @@ const App = () => {
                                 to="/login"
                                 replace
                             />
+                        }
+                    />
+
+                    <Route
+                        path="/backoffice/users"
+                        element={
+                            <ProtectedRoute
+                                allowedRoles={[
+                                    "Backoffice",
+                                ]}
+                            >
+                                <UserManagementPage />
+                            </ProtectedRoute>
                         }
                     />
                 </Routes>

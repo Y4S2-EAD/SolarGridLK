@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const navItems = [
-    { key: "overview", label: "Overview" },
-    { key: "prosumers", label: "Prosumers" },
-    { key: "trades", label: "Trades" },
-    { key: "settlements", label: "Settlements" },
-    { key: "approvals", label: "Approvals" },
-    { key: "reports", label: "Reports" },
+    { to: "/backoffice", label: "Overview", end: true },
+    { to: "/backoffice/users", label: "User Management" },
+    { to: "/backoffice/trades", label: "Trades" },
+    { to: "/backoffice/settlements", label: "Settlements" },
+    { to: "/backoffice/approvals", label: "Approvals" },
+    { to: "/backoffice/reports", label: "Reports" },
 ];
 
 // Placeholder metrics — replace with real API data.
@@ -35,7 +35,6 @@ const statusStyles = {
 
 const BackofficeDashboard = () => {
     const { user, logout } = useAuth();
-    const [active, setActive] = useState("overview");
 
     return (
         <div className="min-h-screen flex bg-[#0b1120] font-body text-[#e7ecf5]">
@@ -48,17 +47,20 @@ const BackofficeDashboard = () => {
 
                 <nav className="flex-1 space-y-1">
                     {navItems.map((item) => (
-                        <button
-                            key={item.key}
-                            onClick={() => setActive(item.key)}
-                            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                                active === item.key
-                                    ? "bg-[#f4a93b]/10 text-[#f4a93b] font-medium"
-                                    : "text-[#a7b2c7] hover:bg-[#132038] hover:text-[#e7ecf5]"
-                            }`}
+                        <NavLink
+                            key={item.to}
+                            to={item.to}
+                            end={item.end}
+                            className={({ isActive }) =>
+                                `block px-3 py-2 rounded-md text-sm transition-colors ${
+                                    isActive
+                                        ? "bg-[#f4a93b]/10 text-[#f4a93b] font-medium"
+                                        : "text-[#a7b2c7] hover:bg-[#132038] hover:text-[#e7ecf5]"
+                                }`
+                            }
                         >
                             {item.label}
-                        </button>
+                        </NavLink>
                     ))}
                 </nav>
 
@@ -73,7 +75,7 @@ const BackofficeDashboard = () => {
                 <header className="flex items-center justify-between px-6 py-4 border-b border-[#1c2942]">
                     <div>
                         <h1 className="font-grotesk text-lg font-semibold leading-tight">
-                            {navItems.find((n) => n.key === active)?.label}
+                            Overview
                         </h1>
                         <p className="text-xs text-[#7c8ba6]">
                             {new Date().toLocaleDateString(undefined, {
@@ -148,9 +150,12 @@ const BackofficeDashboard = () => {
                     <div className="bg-[#101a30] border border-[#1c2942] rounded-md overflow-hidden">
                         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c2942]">
                             <h2 className="font-grotesk text-sm font-semibold">Recent trades</h2>
-                            <button className="text-xs text-[#f4a93b] hover:text-[#ffbb52] transition-colors">
+                            <NavLink
+                                to="/backoffice/trades"
+                                className="text-xs text-[#f4a93b] hover:text-[#ffbb52] transition-colors"
+                            >
                                 View all
-                            </button>
+                            </NavLink>
                         </div>
 
                         <div className="overflow-x-auto">
