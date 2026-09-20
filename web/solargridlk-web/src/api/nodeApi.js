@@ -15,3 +15,20 @@ export const getNodeById = async (nodeId) => {
 
     return response.data;
 };
+
+export const createNode = async (nodeData) => {
+    // Register a microgrid node. Node ID is the business key.
+    const response = await apiClient.post("/nodes", nodeData);
+
+    return response.data;
+};
+
+export const updateNode = async (nodeId, nodeData) => {
+    // Update node details. The route node id is not replaced.
+    const response = await apiClient.put(
+        `/nodes/${encodeURIComponent(nodeId)}`,
+        nodeData
+    );
+
+    return response.data;
+};

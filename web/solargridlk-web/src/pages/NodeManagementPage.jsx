@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getNodes } from "../api/nodeApi";
+import NodeFormPanel from "./NodeFormPanel";
 
 const tableColumns = ["Node ID", "Name", "Location", "Capacity", "Battery slots", "Status", "Actions"];
 
@@ -25,7 +26,9 @@ const NodeManagementPage = () => {
     const [nodes, setNodes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
     const [reloadKey, setReloadKey] = useState(0);
+    const [isFormOpen, setIsFormOpen] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -87,9 +90,13 @@ const NodeManagementPage = () => {
                     </p>
                 </div>
 
-                {/* Create is reserved for a later step and does not call the API yet. */}
                 <button
                     type="button"
+                    onClick={() => {
+                        setError("");
+                        setSuccess("");
+                        setIsFormOpen(true);
+                    }}
                     className="flex items-center gap-1.5 shrink-0 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
                 >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -99,7 +106,20 @@ const NodeManagementPage = () => {
                 </button>
             </div>
 
-            {error && (
+            {success && (
+                <div className="bg-emerald-400/10 border border-emerald-400/30 text-emerald-300 px-4 py-2.5 rounded-md text-sm flex items-center justify-between">
+                    {success}
+                    <button
+                        type="button"
+                        onClick={() => setSuccess("")}
+                        className="text-emerald-300/70 hover:text-emerald-300"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
+
+            {error && !isFormOpen && (
                 <div className="bg-red-600/10 border border-red-600/40 text-red-300 px-4 py-2.5 rounded-md text-sm flex items-center justify-between">
                     {error}
                     <button
@@ -212,10 +232,25 @@ const NodeManagementPage = () => {
                                                     >
                                                         View
                                                     </button>
-                                                    {/* Edit, schedule, and deactivate are reserved for a later step. */}
-                                                    <button type="button" className={actionButtonClass}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            navigate(
+                                                                `/backoffice/nodes/${encodeURIComponent(node.nodeId)}`,
+                                                                { state: { openEdit: true } }
+                                                            )
+                                                        }
+                                                        disabled={!isActive}
+                                                        title={
+                                                            isActive
+                                                                ? undefined
+                                                                : "A deactivated node cannot be updated."
+                                                        }
+                                                        className={`${actionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+                                                    >
                                                         Edit
                                                     </button>
+                                                    {/* Schedule and deactivate are reserved for a later step. */}
                                                     <button type="button" className={actionButtonClass}>
                                                         Schedule
                                                     </button>
@@ -234,6 +269,19 @@ const NodeManagementPage = () => {
                     </table>
                 </div>
             </div>
+
+            <NodeFormPanel
+                key={isFormOpen ? "create" : "closed"}
+                mode="create"
+                isOpen={isFormOpen}
+                onClose={() => setIsFormOpen(false)}
+                onCompleted={() => {
+                    setIsFormOpen(false);
+                    setError("");
+                    setSuccess("Node created successfully.");
+                    setReloadKey((current) => current + 1);
+                }}
+            />
         </div>
     );
 };
