@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getProsumerByNic, updateProsumer } from "../api/prosumerApi";
+import { getProsumerByNic, reactivateProsumer, updateProsumer } from "../api/prosumerApi";
+import ProsumerDeactivatePanel from "./ProsumerDeactivatePanel";
 import { inputClassName, profileValidationMessage } from "./prosumerValidation";
 
 const emptyForm = {
@@ -28,6 +29,8 @@ const ProsumerDetailsPage = () => {
     const [formData, setFormData] = useState(emptyForm);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [isDeactivateOpen, setIsDeactivateOpen] = useState(false);
+    const [statusSaving, setStatusSaving] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -55,6 +58,23 @@ const ProsumerDetailsPage = () => {
 
                 if (response.success && response.data) {
                     setProsumer(response.data);
+
+                    if (editRequested.current) {
+                        editRequested.current = false;
+
+                        if (response.data.status !== "Active") {
+                            setError("Cannot update a deactivated prosumer account.");
+                        } else {
+                            setFormData({
+                                fullName: response.data.fullName || "",
+                                email: response.data.email || "",
+                                phoneNumber: response.data.phoneNumber || "",
+                                address: response.data.address || "",
+                                password: "",
+                            });
+                            setIsFormOpen(true);
+                        }
+                    }
                 } else {
                     setProsumer(null);
                     setNotFound(true);
@@ -99,29 +119,74 @@ const ProsumerDetailsPage = () => {
         };
     }, [nic]);
 
-    useEffect(() => {
-        if (!prosumer || !editRequested.current) {
-            return;
-        }
-
-        editRequested.current = false;
-
-        if (prosumer.status !== "Active") {
-            setError("Cannot update a deactivated prosumer account.");
-            return;
-        }
-
-        setFormData({
-            fullName: prosumer.fullName || "",
-            email: prosumer.email || "",
-            phoneNumber: prosumer.phoneNumber || "",
-            address: prosumer.address || "",
-            password: "",
-        });
-        setIsFormOpen(true);
-    }, [prosumer]);
-
     const isActive = prosumer?.status === "Active";
+    const isDeactivated = prosumer?.status === "Deactivated";
+
+    const refreshLoadedProsumer = async (data) => {
+        setProsumer(data);
+
+        try {
+            const refreshed = await getProsumerByNic(data.nic || prosumer?.nic);
+
+            if (refreshed.success && refreshed.data) {
+                setProsumer(refreshed.data);
+            }
+        } catch (refreshError) {
+            console.error("Prosumer could not be reloaded:", refreshError);
+        }
+    };
+
+    const handleDeactivated = async (data) => {
+        setIsDeactivateOpen(false);
+        setError("");
+        setSuccess("Prosumer deactivated successfully.");
+        await refreshLoadedProsumer(data);
+    };
+
+    const handleReactivate = async () => {
+        if (!prosumer || !isDeactivated || statusSaving || saving) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Are you sure you want to reactivate "${prosumer.nic}"?`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setStatusSaving(true);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await reactivateProsumer(prosumer.nic);
+
+            if (!response.success || !response.data) {
+                setError(response.message || "Unable to reactivate prosumer.");
+                return;
+            }
+
+            setSuccess("Prosumer reactivated successfully.");
+            await refreshLoadedProsumer(response.data);
+        } catch (requestError) {
+            console.error("Reactivate prosumer failed:", requestError);
+
+            const status = requestError.response?.status;
+            const data = requestError.response?.data;
+
+            if (status === 401) {
+                setError("Your session has expired. Please log in again.");
+            } else if (status === 403) {
+                setError("You do not have permission to reactivate prosumers.");
+            } else {
+                setError(data?.message || "Unable to reactivate the prosumer.");
+            }
+        } finally {
+            setStatusSaving(false);
+        }
+    };
 
     const handleFormChange = (event) => {
         const { name, value } = event.target;
@@ -266,19 +331,45 @@ const ProsumerDetailsPage = () => {
                 </div>
 
                 {prosumer && (
-                    <button
-                        type="button"
-                        onClick={openEditForm}
-                        disabled={!isActive || saving}
-                        title={
-                            isActive
-                                ? undefined
-                                : "A deactivated account cannot be updated."
-                        }
-                        className="shrink-0 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
-                    >
-                        Edit
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {isActive && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setError("");
+                                    setSuccess("");
+                                    setIsDeactivateOpen(true);
+                                }}
+                                disabled={statusSaving || saving}
+                                className="text-sm text-red-300 hover:text-red-200 border border-red-900/40 hover:border-red-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-3.5 py-2 transition-colors"
+                            >
+                                Deactivate
+                            </button>
+                        )}
+                        {isDeactivated && (
+                            <button
+                                type="button"
+                                onClick={handleReactivate}
+                                disabled={statusSaving || saving}
+                                className="text-sm text-emerald-300 hover:text-emerald-200 border border-emerald-900/40 hover:border-emerald-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-3.5 py-2 transition-colors"
+                            >
+                                {statusSaving ? "Saving…" : "Reactivate"}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={openEditForm}
+                            disabled={!isActive || saving || statusSaving}
+                            title={
+                                isActive
+                                    ? undefined
+                                    : "A deactivated account cannot be updated."
+                            }
+                            className="shrink-0 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
+                        >
+                            Edit
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -538,6 +629,14 @@ const ProsumerDetailsPage = () => {
                     </div>
                 </>
             )}
+
+            <ProsumerDeactivatePanel
+                key={isDeactivateOpen ? prosumer?.nic : "closed"}
+                nic={prosumer?.nic || ""}
+                isOpen={isDeactivateOpen && Boolean(prosumer)}
+                onClose={() => setIsDeactivateOpen(false)}
+                onCompleted={handleDeactivated}
+            />
         </div>
     );
 };

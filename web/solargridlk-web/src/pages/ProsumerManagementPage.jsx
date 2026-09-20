@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createProsumer, getProsumerByNic } from "../api/prosumerApi";
+import { createProsumer, getProsumerByNic, reactivateProsumer } from "../api/prosumerApi";
+import ProsumerDeactivatePanel from "./ProsumerDeactivatePanel";
 import {
     inputClassName,
     profileValidationMessage,
@@ -49,6 +50,8 @@ const ProsumerManagementPage = () => {
     const [formData, setFormData] = useState(emptyForm);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [isDeactivateOpen, setIsDeactivateOpen] = useState(false);
+    const [statusSaving, setStatusSaving] = useState(false);
 
     const lookupProsumer = async (nic) => {
         const trimmedNic = nic.trim();
@@ -245,6 +248,80 @@ const ProsumerManagementPage = () => {
     };
 
     const isActive = prosumer?.status === "Active";
+    const isDeactivated = prosumer?.status === "Deactivated";
+
+    const refreshLoadedProsumer = async (data) => {
+        setProsumer(data);
+        setNotFound(false);
+
+        if (data?.nic) {
+            setSearchedNic(data.nic);
+            setNicInput(data.nic);
+        }
+
+        try {
+            const refreshed = await getProsumerByNic(data.nic);
+
+            if (refreshed.success && refreshed.data) {
+                setProsumer(refreshed.data);
+                setSearchedNic(refreshed.data.nic || data.nic);
+            }
+        } catch (refreshError) {
+            console.error("Prosumer could not be reloaded:", refreshError);
+        }
+    };
+
+    const handleDeactivated = async (data) => {
+        setIsDeactivateOpen(false);
+        setError("");
+        setSuccess("Prosumer deactivated successfully.");
+        await refreshLoadedProsumer(data);
+    };
+
+    const handleReactivate = async () => {
+        if (!prosumer || !isDeactivated || statusSaving || saving) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Are you sure you want to reactivate "${prosumer.nic}"?`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setStatusSaving(true);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await reactivateProsumer(prosumer.nic);
+
+            if (!response.success || !response.data) {
+                setError(response.message || "Unable to reactivate prosumer.");
+                return;
+            }
+
+            setSuccess("Prosumer reactivated successfully.");
+            await refreshLoadedProsumer(response.data);
+        } catch (requestError) {
+            console.error("Reactivate prosumer failed:", requestError);
+
+            const status = requestError.response?.status;
+            const data = requestError.response?.data;
+
+            if (status === 401) {
+                setError("Your session has expired. Please log in again.");
+            } else if (status === 403) {
+                setError("You do not have permission to reactivate prosumers.");
+            } else {
+                setError(data?.message || "Unable to reactivate the prosumer.");
+            }
+        } finally {
+            setStatusSaving(false);
+        }
+    };
 
     return (
         <div className="space-y-4">
@@ -456,19 +533,28 @@ const ProsumerManagementPage = () => {
                                             >
                                                 Edit
                                             </button>
-                                            {isActive ? (
+                                            {isActive && (
                                                 <button
                                                     type="button"
-                                                    className="text-xs text-red-300 border border-red-900/40 rounded-md px-2.5 py-1.5"
+                                                    onClick={() => {
+                                                        setError("");
+                                                        setSuccess("");
+                                                        setIsDeactivateOpen(true);
+                                                    }}
+                                                    disabled={statusSaving || saving}
+                                                    className="text-xs text-red-300 hover:text-red-200 border border-red-900/40 hover:border-red-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1.5 transition-colors"
                                                 >
                                                     Deactivate
                                                 </button>
-                                            ) : (
+                                            )}
+                                            {isDeactivated && (
                                                 <button
                                                     type="button"
-                                                    className="text-xs text-emerald-300 border border-emerald-900/40 rounded-md px-2.5 py-1.5"
+                                                    onClick={handleReactivate}
+                                                    disabled={statusSaving || saving}
+                                                    className="text-xs text-emerald-300 hover:text-emerald-200 border border-emerald-900/40 hover:border-emerald-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1.5 transition-colors"
                                                 >
-                                                    Reactivate
+                                                    {statusSaving ? "Saving…" : "Reactivate"}
                                                 </button>
                                             )}
                                         </div>
@@ -648,6 +734,14 @@ const ProsumerManagementPage = () => {
                     </div>
                 </>
             )}
+
+            <ProsumerDeactivatePanel
+                key={isDeactivateOpen ? prosumer?.nic : "closed"}
+                nic={prosumer?.nic || ""}
+                isOpen={isDeactivateOpen && Boolean(prosumer)}
+                onClose={() => setIsDeactivateOpen(false)}
+                onCompleted={handleDeactivated}
+            />
         </div>
     );
 };
