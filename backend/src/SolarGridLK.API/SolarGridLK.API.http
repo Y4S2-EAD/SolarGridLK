@@ -1,0 +1,6 @@
+@SolarGridLK.API_HostAddress = http://localhost:5136
+
+GET {{SolarGridLK.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
