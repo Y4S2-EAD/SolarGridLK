@@ -12,6 +12,7 @@ import BackofficeDashboard from "./pages/BackofficeDashboard";
 import UserManagementPage from "./pages/UserManagementPage";
 import ProsumerManagementPage from "./pages/ProsumerManagementPage";
 import ProsumerDetailsPage from "./pages/ProsumerDetailsPage";
+import NodeManagementPage from "./pages/NodeManagementPage";
 import ReservationsPage from "./pages/ReservationsPage";
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -68,6 +69,13 @@ const App = () => {
                             path="prosumers/:nic"
                             element={
                                 <ProsumerDetailsPage />
+                            }
+                        />
+
+                        <Route
+                            path="nodes"
+                            element={
+                                <NodeManagementPage />
                             }
                         />
 

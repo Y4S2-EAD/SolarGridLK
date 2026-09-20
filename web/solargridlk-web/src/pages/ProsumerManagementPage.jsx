@@ -331,9 +331,6 @@ const ProsumerManagementPage = () => {
                     <p className="text-sm text-[#7c8ba6] mt-1">
                         Backoffice users manage prosumer accounts.
                     </p>
-                    <p className="text-xs text-[#7c8ba6] mt-1">
-                        Look up one account by NIC. A full prosumer list is not available from the current API.
-                    </p>
                 </div>
 
                 <button
