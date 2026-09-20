@@ -13,6 +13,7 @@ import UserManagementPage from "./pages/UserManagementPage";
 import ProsumerManagementPage from "./pages/ProsumerManagementPage";
 import ProsumerDetailsPage from "./pages/ProsumerDetailsPage";
 import NodeManagementPage from "./pages/NodeManagementPage";
+import NodeDetailsPage from "./pages/NodeDetailsPage";
 import ReservationsPage from "./pages/ReservationsPage";
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -76,6 +77,13 @@ const App = () => {
                             path="nodes"
                             element={
                                 <NodeManagementPage />
+                            }
+                        />
+
+                        <Route
+                            path="nodes/:nodeId"
+                            element={
+                                <NodeDetailsPage />
                             }
                         />
 

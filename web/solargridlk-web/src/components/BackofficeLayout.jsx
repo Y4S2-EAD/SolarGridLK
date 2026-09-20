@@ -66,7 +66,8 @@ const BackofficeLayout = () => {
                     <Link
                         to="/backoffice/nodes"
                         className={`block px-3 py-2 rounded-md text-sm transition-colors ${
-                            isActive("/backoffice/nodes")
+                            location.pathname === "/backoffice/nodes" ||
+                            location.pathname.startsWith("/backoffice/nodes/")
                                 ? "bg-[#f4a93b]/10 text-[#f4a93b] font-medium"
                                 : "text-[#a7b2c7] hover:bg-[#132038] hover:text-[#e7ecf5]"
                         }`}
