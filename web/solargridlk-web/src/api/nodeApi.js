@@ -23,6 +23,16 @@ export const createNode = async (nodeData) => {
     return response.data;
 };
 
+export const updateNodeSchedule = async (nodeId, schedule) => {
+    // Replace the node's operating schedule.
+    const response = await apiClient.put(
+        `/nodes/${encodeURIComponent(nodeId)}/schedule`,
+        { schedule }
+    );
+
+    return response.data;
+};
+
 export const updateNode = async (nodeId, nodeData) => {
     // Update node details. The route node id is not replaced.
     const response = await apiClient.put(

@@ -250,10 +250,18 @@ const NodeManagementPage = () => {
                                                     >
                                                         Edit
                                                     </button>
-                                                    {/* Schedule and deactivate are reserved for a later step. */}
-                                                    <button type="button" className={actionButtonClass}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            navigate(
+                                                                `/backoffice/nodes/${encodeURIComponent(node.nodeId)}#schedule`
+                                                            )
+                                                        }
+                                                        className={actionButtonClass}
+                                                    >
                                                         Schedule
                                                     </button>
+                                                    {/* Deactivate is reserved for a later step. */}
                                                     <button
                                                         type="button"
                                                         className="text-xs text-red-300 border border-red-900/40 rounded-md px-2.5 py-1.5"

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getNodeById } from "../api/nodeApi";
+import { getNodeById, updateNodeSchedule } from "../api/nodeApi";
 import NodeFormPanel from "./NodeFormPanel";
+import { buildScheduleForm, scheduleFieldError, toSchedulePayload } from "./nodeValidation";
 
 const displayValue = (value) => (value || value === 0 ? value : "—");
 
@@ -35,6 +36,12 @@ const NodeDetailsPage = () => {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [scheduleSlots, setScheduleSlots] = useState(() => buildScheduleForm([]));
+    const [scheduleSource, setScheduleSource] = useState("");
+    const [scheduleError, setScheduleError] = useState("");
+    const [scheduleSaving, setScheduleSaving] = useState(false);
+    const scheduleSubmitRef = useRef(false);
+    const scrolledToSchedule = useRef(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -113,8 +120,97 @@ const NodeDetailsPage = () => {
         };
     }, [nodeId]);
 
+    useEffect(() => {
+        if (scrolledToSchedule.current || loading || !node || window.location.hash !== "#schedule") {
+            return;
+        }
+
+        scrolledToSchedule.current = true;
+        document.getElementById("schedule")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+        });
+    }, [loading, node]);
+
     const isActive = node?.status === "Active";
     const schedule = Array.isArray(node?.schedule) ? node.schedule : [];
+    const nextScheduleSource = JSON.stringify(node?.schedule ?? null);
+
+    if (node && scheduleSource !== nextScheduleSource) {
+        setScheduleSource(nextScheduleSource);
+        setScheduleSlots(buildScheduleForm(node.schedule));
+    }
+
+    const updateScheduleSlot = (dayOfWeek, field, value) => {
+        setScheduleSlots((current) =>
+            current.map((slot) =>
+                slot.dayOfWeek === dayOfWeek ? { ...slot, [field]: value } : slot
+            )
+        );
+    };
+
+    const handleSaveSchedule = async (event) => {
+        event.preventDefault();
+
+        if (scheduleSubmitRef.current || !node) {
+            return;
+        }
+
+        const validationError = scheduleFieldError(scheduleSlots);
+
+        if (validationError) {
+            setScheduleError(validationError);
+            return;
+        }
+
+        scheduleSubmitRef.current = true;
+        setScheduleSaving(true);
+        setScheduleError("");
+        setSuccess("");
+
+        try {
+            const response = await updateNodeSchedule(
+                node.nodeId,
+                toSchedulePayload(scheduleSlots).schedule
+            );
+
+            if (!response.success || !response.data) {
+                setScheduleError(response.message || "Unable to update the schedule.");
+                return;
+            }
+
+            setSuccess("Node schedule updated successfully.");
+            setNode(response.data);
+
+            try {
+                const refreshed = await getNodeById(response.data.nodeId || node.nodeId);
+
+                if (refreshed.success && refreshed.data) {
+                    setNode(refreshed.data);
+                }
+            } catch (refreshError) {
+                console.error("Updated schedule could not be reloaded:", refreshError);
+            }
+        } catch (requestError) {
+            console.error("Update schedule failed:", requestError);
+
+            const status = requestError.response?.status;
+            const data = requestError.response?.data;
+
+            if (status === 401) {
+                setScheduleError("Your session has expired. Please log in again.");
+            } else if (status === 403) {
+                setScheduleError("You do not have permission to update this schedule.");
+            } else if (status === 404) {
+                setScheduleError(data?.message || "Node not found.");
+            } else {
+                setScheduleError(data?.message || "Unable to update the schedule.");
+            }
+        } finally {
+            scheduleSubmitRef.current = false;
+            setScheduleSaving(false);
+        }
+    };
 
     const detailRows = node
         ? [
@@ -263,44 +359,91 @@ const NodeDetailsPage = () => {
             </div>
 
             {!loading && node && (
-                <div className="bg-[#101a30] border border-[#1c2942] rounded-md overflow-hidden">
-                    <div className="px-5 py-4 border-b border-[#1c2942]">
-                        <h3 className="font-grotesk text-sm font-semibold">Schedule</h3>
-                        <p className="mt-1 text-xs text-[#7c8ba6]">
-                            {schedule.length === 0 ? "No schedule returned" : `${schedule.length} day${schedule.length === 1 ? "" : "s"}`}
-                        </p>
+                <form
+                    id="schedule"
+                    onSubmit={handleSaveSchedule}
+                    className="bg-[#101a30] border border-[#1c2942] rounded-md overflow-hidden"
+                >
+                    <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-[#1c2942]">
+                        <div>
+                            <h3 className="font-grotesk text-sm font-semibold">Schedule</h3>
+                            <p className="mt-1 text-xs text-[#7c8ba6]">
+                                {schedule.length === 0
+                                    ? "No schedule is saved yet."
+                                    : `${schedule.length} day${schedule.length === 1 ? "" : "s"} saved.`}
+                                {" "}
+                                Saving replaces the full schedule. Leave a day blank to leave it out.
+                            </p>
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={!isActive || scheduleSaving}
+                            title={
+                                isActive
+                                    ? undefined
+                                    : "A deactivated node cannot be updated."
+                            }
+                            className="shrink-0 flex items-center justify-center gap-2 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
+                        >
+                            {scheduleSaving && (
+                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                                </svg>
+                            )}
+                            {scheduleSaving ? "Saving…" : "Update schedule"}
+                        </button>
                     </div>
 
-                    {schedule.length === 0 ? (
-                        <div className="px-5 py-10 text-center text-sm text-[#7c8ba6]">
-                            This node has no schedule.
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="text-left text-xs text-[#7c8ba6] border-b border-[#1c2942]">
-                                        <th className="font-normal px-5 py-3">Day</th>
-                                        <th className="font-normal px-5 py-3">Start</th>
-                                        <th className="font-normal px-5 py-3">End</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {schedule.map((slot) => (
-                                        <tr
-                                            key={`${slot.dayOfWeek}-${slot.startTime}`}
-                                            className="border-b border-[#1c2942] last:border-0"
-                                        >
-                                            <td className="px-5 py-3">{slot.dayOfWeek}</td>
-                                            <td className="px-5 py-3 text-[#a7b2c7]">{slot.startTime}</td>
-                                            <td className="px-5 py-3 text-[#a7b2c7]">{slot.endTime}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                    {scheduleError && (
+                        <div className="mx-5 mt-4 bg-red-600/10 border border-red-600/40 text-red-300 px-3.5 py-2.5 rounded-md text-sm">
+                            {scheduleError}
                         </div>
                     )}
-                </div>
+
+                    <div className="divide-y divide-[#1c2942]">
+                        {scheduleSlots.map((slot) => (
+                            <div
+                                key={slot.dayOfWeek}
+                                className="grid grid-cols-1 gap-3 px-5 py-3 sm:grid-cols-[140px_1fr_1fr] sm:items-center"
+                            >
+                                <div className="text-sm font-medium">{slot.dayOfWeek}</div>
+                                <label className="block">
+                                    <span className="mb-1.5 block text-xs text-[#7c8ba6]">Start</span>
+                                    <input
+                                        type="time"
+                                        value={slot.startTime}
+                                        onChange={(event) =>
+                                            updateScheduleSlot(
+                                                slot.dayOfWeek,
+                                                "startTime",
+                                                event.target.value.slice(0, 5)
+                                            )
+                                        }
+                                        disabled={!isActive || scheduleSaving}
+                                        className="w-full box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <span className="mb-1.5 block text-xs text-[#7c8ba6]">End</span>
+                                    <input
+                                        type="time"
+                                        value={slot.endTime}
+                                        onChange={(event) =>
+                                            updateScheduleSlot(
+                                                slot.dayOfWeek,
+                                                "endTime",
+                                                event.target.value.slice(0, 5)
+                                            )
+                                        }
+                                        disabled={!isActive || scheduleSaving}
+                                        className="w-full box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                </label>
+                            </div>
+                        ))}
+                    </div>
+                </form>
             )}
 
             {node && (

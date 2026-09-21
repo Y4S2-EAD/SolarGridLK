@@ -101,3 +101,56 @@ export const toNodePayload = (fields, { includeNodeId = false } = {}) => {
 
     return payload;
 };
+
+export const daysOfWeek = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
+
+const scheduleTimePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export const buildScheduleForm = (schedule = []) => {
+    const byDay = new Map((schedule || []).map((slot) => [slot.dayOfWeek, slot]));
+
+    return daysOfWeek.map((day) => ({
+        dayOfWeek: day,
+        startTime: byDay.get(day)?.startTime || "",
+        endTime: byDay.get(day)?.endTime || "",
+    }));
+};
+
+export const scheduleFieldError = (slots) => {
+    for (const slot of slots) {
+        const startTime = slot.startTime.trim();
+        const endTime = slot.endTime.trim();
+
+        if (!startTime && !endTime) {
+            continue;
+        }
+
+        if (!scheduleTimePattern.test(startTime) || !scheduleTimePattern.test(endTime)) {
+            return "Schedule times must use HH:mm.";
+        }
+
+        if (startTime >= endTime) {
+            return "Schedule start time must be before end time.";
+        }
+    }
+
+    return "";
+};
+
+export const toSchedulePayload = (slots) => ({
+    schedule: slots
+        .filter((slot) => slot.startTime.trim() && slot.endTime.trim())
+        .map((slot) => ({
+            dayOfWeek: slot.dayOfWeek,
+            startTime: slot.startTime.trim(),
+            endTime: slot.endTime.trim(),
+        })),
+});
