@@ -27,8 +27,8 @@ public interface IReservationService
     Task<ReservationDto?> CancelReservationAsync(string id);
 
     Task<ReservationDto?> ApproveReservationAsync(
-        string id
+        string id,
         string qrCode);
 
-    Task<DashboardSummaryDto> GetDashboardSummaryAsync(string prosumerNic);
+    Task<DashboardSummaryDto> GetDashboardSummaryAsync(string prosumerNic)
 }
