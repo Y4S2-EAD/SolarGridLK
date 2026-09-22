@@ -17,7 +17,7 @@ public interface IReservationRepository
 
     Task<List<Reservation>> GetByProsumerNicAsync(string prosumerNic);
 
-    Task<bool> HasActiveReservationForNodeAsync (string nodeId);
+    Task<bool> HasActiveReservationsForNodeAsync (string nodeId);
 
     Task CreateAsync(Reservation reservation);
 

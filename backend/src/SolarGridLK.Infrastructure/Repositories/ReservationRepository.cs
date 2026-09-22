@@ -1,7 +1,7 @@
 ﻿/*
  * File: ReservationRepository.cs
  * Project: SolarGridLK.Infrastructure
- * Description: Implements the MongoDB data access for energy reservatios.
+ * Description: Implements the MongoDB data access for energy reservations.
  * Author: Nipuni Bandara
  */
 
@@ -28,29 +28,29 @@ public class ReservationRepository : IReservationRepository
         //Find a single reservation by its MongoDB identifier
         return await _reservations.Find(r => r.Id == id).FirstOrDefaultAsync();
     }
-    public async Task<IEnumerable<Reservation>> GetAllAsync()
+
+    public async Task<List<Reservation>> GetAllAsync()
     {
         //Retrieve every reservation from the EnergyReservations collection
         return await _reservations.Find(_ => true).ToListAsync();
     }
 
-    public asyncTask<List<Reservation>> GetByProcumerNicAsync(string procumerNic)
+    public async Task<List<Reservation>> GetByProsumerNicAsync(string prosumerNic)
     {
-        //Retrieve all reservations associated with a specific procumer's NIC
-        return await _reservations.Find(r => r.ProcumerNic == procumerNic).ToListAsync();
+        //Retrieve all reservations associated with a specific prosumer's NIC
+        return await _reservations.Find(r => r.ProsumerNic == prosumerNic).ToListAsync();
     }
 
     public async Task<bool> HasActiveReservationsForNodeAsync(string nodeId)
     {
-        //Check if there are any active reservations for a specific node
+        //Check whether a node has any reservation that is not yet finished
         return await _reservations.Find(r => r.NodeId == nodeId && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved)).AnyAsync();
     }
 
-    public async Task<Reservation> CreateAsync(Reservation reservation)
+    public async Task CreateAsync(Reservation reservation)
     {
         //Insert a new reservation into the EnergyReservations collection
         await _reservations.InsertOneAsync(reservation);
-        return reservation;
     }
 
     public async Task UpdateAsync(Reservation reservation)

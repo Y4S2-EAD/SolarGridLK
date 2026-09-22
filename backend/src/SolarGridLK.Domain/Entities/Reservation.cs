@@ -17,7 +17,7 @@ public class Reservation
     [BsonRepresentation(BsonType.ObjectId)]
     public string Id { get; set; } = string.Empty;
 
-    public string ProcumerNic { get; set; } = string.Empty;
+    public string ProsumerNic { get; set; } = string.Empty;
 
     public string NodeId { get; set; } = string.Empty;
 
