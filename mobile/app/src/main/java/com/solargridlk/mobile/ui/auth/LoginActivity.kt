@@ -1,7 +1,9 @@
 package com.solargridlk.mobile.ui.auth
 
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +13,7 @@ import com.solargridlk.mobile.data.api.RetrofitClient
 import com.solargridlk.mobile.data.model.LoginData
 import com.solargridlk.mobile.data.repository.AuthRepository
 import kotlinx.coroutines.launch
+import com.solargridlk.mobile.utils.SessionManager
 
 class LoginActivity : AppCompatActivity() {
 
@@ -18,6 +21,8 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var passwordInput: EditText
     private lateinit var loginButton: Button
     private lateinit var errorText: TextView
+    private lateinit var rememberMeCheckbox: CheckBox
+    private lateinit var sessionManager: SessionManager
 
     private val authRepository by lazy {
         AuthRepository(RetrofitClient.authApi)
@@ -29,6 +34,8 @@ class LoginActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_login)
 
+        sessionManager = SessionManager(this)
+
         initializeViews()
         setupLoginButton()
     }
@@ -39,6 +46,7 @@ class LoginActivity : AppCompatActivity() {
         passwordInput = findViewById(R.id.passwordInput)
         loginButton = findViewById(R.id.loginButton)
         errorText = findViewById(R.id.errorText)
+        rememberMeCheckbox = findViewById(R.id.rememberMeCheckbox)
     }
 
     private fun setupLoginButton() {
@@ -125,33 +133,32 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleLoginSuccess(
-        loginData: LoginData
-    ) {
-        // Handle the authenticated user's role after successful login.
-        android.util.Log.d(
+    private fun handleLoginSuccess(loginData: LoginData) {
+        // Save the authenticated user's session after successful login.
+        sessionManager.saveSession(
+            token = loginData.token,
+            username = loginData.username,
+            role = loginData.role,
+            fullName = loginData.fullName,
+            expiresAt = loginData.expiresAt
+        )
+
+        Log.d(
             "SolarGridAPI",
-            "Login successful: ${loginData.username}, " +
-                    "role: ${loginData.role}"
+            "Session saved for ${loginData.username}, role=${loginData.role}"
         )
 
         when (loginData.role) {
             "Backoffice" -> {
-                showError(
-                    "Backoffice login successful."
-                )
+                showError("Backoffice login successful.")
             }
 
             "GridOperator" -> {
-                showError(
-                    "Grid Operator login successful."
-                )
+                showError("Grid Operator login successful.")
             }
 
             else -> {
-                showError(
-                    "Unsupported user role."
-                )
+                showError("Unsupported user role.")
             }
         }
     }
