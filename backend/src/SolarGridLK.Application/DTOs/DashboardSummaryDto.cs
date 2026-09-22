@@ -1,11 +1,11 @@
-﻿/*
+/*
  * File: DashboardSummaryDto.cs
  * Project: SolarGridLK.Application
  * Description: Represents aggregated reservation counts for a prosumer's dashboard.
  * Author: Nipuni Bandara
 */
 
-namespace SolarGridLk.Application.DTOs;
+namespace SolarGridLK.Application.DTOs;
 
 public class DashboardSummaryDto
 {
