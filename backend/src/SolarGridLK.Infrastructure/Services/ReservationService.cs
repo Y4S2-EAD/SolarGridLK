@@ -171,6 +171,26 @@ public class ReservationService : IReservationService
         return MapToDto(reservation);
     }
 
+    public async Task<ReservationDto?> CompleteReservationAsync(string id)
+    {
+        var reservation = await _reservationRepository.GetByIdAsync(id);
+        if (reservation == null)
+        {
+            return null;
+        }
+
+        // Only an Approved reservation can be marked Completed.
+        if (reservation.Status != ReservationStatus.Approved)
+        {
+            throw new InvalidOperationException("Only an approved reservation can be completed.");
+        }
+
+        reservation.Status = ReservationStatus.Completed;
+        reservation.LastModifiedAt = DateTime.UtcNow;
+        await _reservationRepository.UpdateAsync(reservation);
+        return MapToDto(reservation);
+    }
+
     public async Task<DashboardSummaryDto> GetDashboardSummaryAsync(string prosumerNic)
     { 
         var reservations = await _reservationRepository.GetByProsumerNicAsync(prosumerNic);

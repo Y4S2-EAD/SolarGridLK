@@ -78,6 +78,42 @@ public class ReservationsController : ControllerBase
         }
     }
 
+    [HttpPost("{id}/approve")]
+    public async Task<IActionResult> Approve(string id, [FromBody] string qrCode)
+    {
+        // Approve a pending reservation and attach the generated QR code.
+        try
+        {
+            var reservation = await _reservationService.ApproveReservationAsync(id, qrCode);
+            if (reservation == null)
+                return NotFound(new { success = false, message = "Reservation not found." });
+
+            return Ok(ApiResponse<ReservationDto>.Ok(reservation, "Reservation approved successfully."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id}/complete")]
+    public async Task<IActionResult> Complete(string id)
+    {
+        // Mark an approved reservation as completed once the energy transfer is finalized.
+        try
+        {
+            var reservation = await _reservationService.CompleteReservationAsync(id);
+            if (reservation == null)
+                return NotFound(new { success = false, message = "Reservation not found." });
+
+            return Ok(ApiResponse<ReservationDto>.Ok(reservation, "Reservation marked as completed."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> Cancel(string id)
     {
