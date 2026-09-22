@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getNodes } from "../api/nodeApi";
+import { deactivateNode, getNodes, nodeDeactivateErrorText } from "../api/nodeApi";
 import NodeFormPanel from "./NodeFormPanel";
 
 const tableColumns = ["Node ID", "Name", "Location", "Capacity", "Battery slots", "Status", "Actions"];
@@ -29,6 +29,55 @@ const NodeManagementPage = () => {
     const [success, setSuccess] = useState("");
     const [reloadKey, setReloadKey] = useState(0);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [deactivatingId, setDeactivatingId] = useState("");
+    const deactivateRef = useRef(false);
+
+    const handleDeactivate = async (node) => {
+        if (deactivateRef.current || node.status !== "Active") {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Are you sure you want to deactivate "${node.nodeId}"?`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        deactivateRef.current = true;
+        setDeactivatingId(node.nodeId);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await deactivateNode(node.nodeId);
+
+            if (!response.success || !response.data) {
+                setError(nodeDeactivateErrorText(response.message));
+                return;
+            }
+
+            setSuccess("Node deactivated successfully.");
+            setNodes((current) =>
+                current.map((item) =>
+                    item.nodeId === response.data.nodeId ? response.data : item
+                )
+            );
+            setReloadKey((current) => current + 1);
+        } catch (requestError) {
+            console.error("Deactivate node failed:", requestError);
+            setError(
+                nodeDeactivateErrorText(
+                    requestError.response?.data?.message,
+                    requestError.response?.status
+                )
+            );
+        } finally {
+            deactivateRef.current = false;
+            setDeactivatingId("");
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -228,7 +277,8 @@ const NodeManagementPage = () => {
                                                                 `/backoffice/nodes/${encodeURIComponent(node.nodeId)}`
                                                             )
                                                         }
-                                                        className={actionButtonClass}
+                                                        disabled={Boolean(deactivatingId)}
+                                                        className={`${actionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
                                                     >
                                                         View
                                                     </button>
@@ -240,7 +290,7 @@ const NodeManagementPage = () => {
                                                                 { state: { openEdit: true } }
                                                             )
                                                         }
-                                                        disabled={!isActive}
+                                                        disabled={!isActive || Boolean(deactivatingId)}
                                                         title={
                                                             isActive
                                                                 ? undefined
@@ -257,17 +307,23 @@ const NodeManagementPage = () => {
                                                                 `/backoffice/nodes/${encodeURIComponent(node.nodeId)}#schedule`
                                                             )
                                                         }
-                                                        className={actionButtonClass}
+                                                        disabled={Boolean(deactivatingId)}
+                                                        className={`${actionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
                                                     >
                                                         Schedule
                                                     </button>
-                                                    {/* Deactivate is reserved for a later step. */}
-                                                    <button
-                                                        type="button"
-                                                        className="text-xs text-red-300 border border-red-900/40 rounded-md px-2.5 py-1.5"
-                                                    >
-                                                        Deactivate
-                                                    </button>
+                                                    {isActive && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeactivate(node)}
+                                                            disabled={Boolean(deactivatingId)}
+                                                            className="text-xs text-red-300 border border-red-900/40 rounded-md px-2.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                        >
+                                                            {deactivatingId === node.nodeId
+                                                                ? "Deactivating…"
+                                                                : "Deactivate"}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>

@@ -95,7 +95,7 @@ export const toNodePayload = (fields, { includeNodeId = false } = {}) => {
 
     if (includeNodeId) {
         payload.nodeId = fields.nodeId.trim();
-        // The create contract requires a schedule. Editing the schedule is a later step.
+        // Create requires a schedule list. An empty list is valid until a schedule is saved.
         payload.schedule = [];
     }
 

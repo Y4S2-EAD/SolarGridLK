@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getNodeById, updateNodeSchedule } from "../api/nodeApi";
+import { deactivateNode, getNodeById, nodeDeactivateErrorText, updateNodeSchedule } from "../api/nodeApi";
 import NodeFormPanel from "./NodeFormPanel";
 import { buildScheduleForm, scheduleFieldError, toSchedulePayload } from "./nodeValidation";
 
@@ -36,6 +36,8 @@ const NodeDetailsPage = () => {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [deactivating, setDeactivating] = useState(false);
+    const deactivateRef = useRef(false);
     const [scheduleSlots, setScheduleSlots] = useState(() => buildScheduleForm([]));
     const [scheduleSource, setScheduleSource] = useState("");
     const [scheduleError, setScheduleError] = useState("");
@@ -149,10 +151,69 @@ const NodeDetailsPage = () => {
         );
     };
 
+    const handleDeactivate = async () => {
+        if (deactivateRef.current || !node || node.status !== "Active") {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Are you sure you want to deactivate "${node.nodeId}"?`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        deactivateRef.current = true;
+        setDeactivating(true);
+        setIsFormOpen(false);
+        setError("");
+        setSuccess("");
+        setScheduleError("");
+
+        try {
+            const response = await deactivateNode(node.nodeId);
+
+            if (!response.success || !response.data) {
+                setError(nodeDeactivateErrorText(response.message));
+                return;
+            }
+
+            setSuccess("Node deactivated successfully.");
+            setNode(response.data);
+
+            try {
+                const refreshed = await getNodeById(response.data.nodeId || node.nodeId);
+
+                if (refreshed.success && refreshed.data) {
+                    setNode(refreshed.data);
+                }
+            } catch (refreshError) {
+                console.error("Deactivated node could not be reloaded:", refreshError);
+            }
+        } catch (requestError) {
+            console.error("Deactivate node failed:", requestError);
+            setError(
+                nodeDeactivateErrorText(
+                    requestError.response?.data?.message,
+                    requestError.response?.status
+                )
+            );
+        } finally {
+            deactivateRef.current = false;
+            setDeactivating(false);
+        }
+    };
+
     const handleSaveSchedule = async (event) => {
         event.preventDefault();
 
-        if (scheduleSubmitRef.current || !node) {
+        if (scheduleSubmitRef.current || !node || deactivating) {
+            return;
+        }
+
+        if (node.status !== "Active") {
+            setScheduleError("Cannot update a deactivated node.");
             return;
         }
 
@@ -243,27 +304,39 @@ const NodeDetailsPage = () => {
                 </div>
 
                 {node && (
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (node.status !== "Active") {
-                                return;
-                            }
+                    <div className="flex items-center gap-2 shrink-0">
+                        {isActive && (
+                            <button
+                                type="button"
+                                onClick={handleDeactivate}
+                                disabled={deactivating || scheduleSaving}
+                                className="text-sm text-red-300 hover:text-red-200 border border-red-900/40 hover:border-red-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-3.5 py-2 transition-colors"
+                            >
+                                {deactivating ? "Deactivating…" : "Deactivate"}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (node.status !== "Active" || deactivating) {
+                                    return;
+                                }
 
-                            setError("");
-                            setSuccess("");
-                            setIsFormOpen(true);
-                        }}
-                        disabled={node.status !== "Active"}
-                        title={
-                            node.status === "Active"
-                                ? undefined
-                                : "A deactivated node cannot be updated."
-                        }
-                        className="shrink-0 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
-                    >
-                        Edit
-                    </button>
+                                setError("");
+                                setSuccess("");
+                                setIsFormOpen(true);
+                            }}
+                            disabled={node.status !== "Active" || deactivating}
+                            title={
+                                node.status === "Active"
+                                    ? undefined
+                                    : "A deactivated node cannot be updated."
+                            }
+                            className="shrink-0 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
+                        >
+                            Edit
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -377,7 +450,7 @@ const NodeDetailsPage = () => {
                         </div>
                         <button
                             type="submit"
-                            disabled={!isActive || scheduleSaving}
+                            disabled={!isActive || scheduleSaving || deactivating}
                             title={
                                 isActive
                                     ? undefined
@@ -420,7 +493,7 @@ const NodeDetailsPage = () => {
                                                 event.target.value.slice(0, 5)
                                             )
                                         }
-                                        disabled={!isActive || scheduleSaving}
+                                        disabled={!isActive || scheduleSaving || deactivating}
                                         className="w-full box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed"
                                     />
                                 </label>
@@ -436,7 +509,7 @@ const NodeDetailsPage = () => {
                                                 event.target.value.slice(0, 5)
                                             )
                                         }
-                                        disabled={!isActive || scheduleSaving}
+                                        disabled={!isActive || scheduleSaving || deactivating}
                                         className="w-full box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed"
                                     />
                                 </label>
