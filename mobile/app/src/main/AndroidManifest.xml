@@ -18,6 +18,14 @@
         android:theme="@style/Theme.SolarGridLK"
         tools:targetApi="31">
         <activity
+            android:name=".ui.backoffice.BackofficeHomeActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.gridoperator.GridOperatorHomeActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.auth.LoginActivity"
             android:exported="false" />
 

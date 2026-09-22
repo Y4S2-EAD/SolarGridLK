@@ -14,6 +14,9 @@ import com.solargridlk.mobile.data.model.LoginData
 import com.solargridlk.mobile.data.repository.AuthRepository
 import kotlinx.coroutines.launch
 import com.solargridlk.mobile.utils.SessionManager
+import android.content.Intent
+import com.solargridlk.mobile.ui.backoffice.BackofficeHomeActivity
+import com.solargridlk.mobile.ui.gridoperator.GridOperatorHomeActivity
 
 class LoginActivity : AppCompatActivity() {
 
@@ -150,14 +153,33 @@ class LoginActivity : AppCompatActivity() {
 
         when (loginData.role) {
             "Backoffice" -> {
-                showError("Backoffice login successful.")
+                val intent = Intent(
+                    this,
+                    BackofficeHomeActivity::class.java
+                )
+
+                intent.flags =
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK
+
+                startActivity(intent)
             }
 
             "GridOperator" -> {
-                showError("Grid Operator login successful.")
+                val intent = Intent(
+                    this,
+                    GridOperatorHomeActivity::class.java
+                )
+
+                intent.flags =
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK
+
+                startActivity(intent)
             }
 
             else -> {
+                sessionManager.clearSession()
                 showError("Unsupported user role.")
             }
         }
