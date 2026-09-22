@@ -2,4 +2,15 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <color name="bg_base">#0B1120</color>
+    <color name="surface">#101A30</color>
+    <color name="border">#2A3A56</color>
+    <color name="accent_amber">#F4A93B</color>
+    <color name="accent_amber_pressed">#FFBB52</color>
+    <color name="text_primary">#E7ECF5</color>
+    <color name="text_muted">#7C8BA6</color>
+    <color name="text_hint">#55637F</color>
+    <color name="error">#F87171</color>
+    <color name="success">#34D399</color>
 </resources>

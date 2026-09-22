@@ -1,54 +1,23 @@
 package com.solargridlk.mobile
 
+import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import com.solargridlk.mobile.data.api.RetrofitClient
-import com.solargridlk.mobile.data.model.LoginRequest
-import kotlinx.coroutines.launch
+import com.solargridlk.mobile.ui.auth.LoginActivity
 
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Initialize the main activity and test API connectivity.
+        // Open the login screen when the application starts.
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
-        testLogin()
-    }
+        val intent = Intent(
+            this,
+            LoginActivity::class.java
+        )
 
-    private fun testLogin() {
-        // Send a test login request to the ASP.NET API.
-        lifecycleScope.launch {
+        startActivity(intent)
 
-            try {
-                val response =
-                    RetrofitClient.authApi.login(
-                        LoginRequest(
-                            username = "",
-                            password = ""
-                        )
-                    )
-
-                Log.d(
-                    "SolarGridAPI",
-                    "HTTP Status: ${response.code()}"
-                )
-
-                Log.d(
-                    "SolarGridAPI",
-                    "Response: ${response.body()}"
-                )
-
-            } catch (exception: Exception) {
-
-                Log.e(
-                    "SolarGridAPI",
-                    "API request failed",
-                    exception
-                )
-            }
-        }
+        finish()
     }
 }
