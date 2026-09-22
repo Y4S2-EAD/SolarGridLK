@@ -30,5 +30,5 @@ public interface IReservationService
         string id,
         string qrCode);
 
-    Task<DashboardSummaryDto> GetDashboardSummaryAsync(string prosumerNic)
+    Task<DashboardSummaryDto> GetDashboardSummaryAsync(string prosumerNic);
 }
