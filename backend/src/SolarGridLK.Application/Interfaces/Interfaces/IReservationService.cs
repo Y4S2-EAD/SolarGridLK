@@ -13,7 +13,7 @@ public interface IReservationService
 {
     Task<ReservationDto> CreateReservationAsync(CreateReservationDto request);
 
-    Task<List<ReseservationDto>> GetReservationAsync(
+    Task<List<ReservationDto>> GetReservationAsync(
         string? prosumerNic,
         string? status,
         string? search);
