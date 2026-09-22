@@ -1,4 +1,11 @@
-﻿namespace SolarGridLK.Application.DTOs;
+﻿/* 
+ * File: ReservationDto.cs
+ * Project: SolarGridLK.Application
+ * Description: Represents a client-safe view of a reservation returned by the API.
+ * Author: Nipuni Bandara
+ */
+
+namespace SolarGridLK.Application.DTOs;
 
 public class ReservationDto
 {

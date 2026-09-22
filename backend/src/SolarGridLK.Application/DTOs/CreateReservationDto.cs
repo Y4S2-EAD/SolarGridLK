@@ -1,4 +1,11 @@
-﻿namespace SolarGridLK.Application.DTOs;
+﻿/* 
+ * File: CreateReservationDto.cs
+ * Project: SolarGridLK.Application
+ * Description: Data transfer object for creating a new energy reservation.
+ * Author: Nipuni Bandara
+ */
+
+namespace SolarGridLK.Application.DTOs;
 
 public class CreateReservationDto
 {
