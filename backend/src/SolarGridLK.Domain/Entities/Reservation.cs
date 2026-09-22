@@ -1,4 +1,11 @@
-﻿using MongoDB.Bson;
+﻿/*
+ * File: Reservation.cs
+ * Project: SolarGridLK.Domain
+ * Description: Represents a reservation entity in the SolarGridLK system, capturing details about energy reservations made by procumers.
+ * Author: Nipuni Bandara
+*/
+
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using SolarGridLK.Domain.Enums;
 
