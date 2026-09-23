@@ -17,6 +17,8 @@ public interface IReservationRepository
 
     Task<List<Reservation>> GetByProsumerNicAsync(string prosumerNic);
 
+    Task<Reservation?> GetByQrCodeAsync(string qrCode);
+
     Task<bool> HasActiveReservationsForNodeAsync (string nodeId);
 
     Task CreateAsync(Reservation reservation);

@@ -58,4 +58,11 @@ public class ReservationRepository : IReservationRepository
         //Replace an existing reservation document with the updated document
         await _reservations.ReplaceOneAsync(existing => existing.Id == reservation.Id, reservation);
     }
+
+    public async Task<Reservation?> GetByQrCodeAsync(string qrCode)
+    {
+        //Find a single reservation by its QR code
+        return await _reservations.Find(r => r.QrCode == qrCode).FirstOrDefaultAsync();
+    }
+
 }
