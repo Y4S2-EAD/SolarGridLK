@@ -1,8 +1,8 @@
 /*
  * File: IQrService.cs
  * Project: SolarGridLK.Application
- * Description: Business operations for QR generation on approval and QR
- *              verification during an energy transfer.
+ * Description: QR token/image generation and QR verification for energy transfers.
+ * Author: Buwaneka Vishwajith
  */
 
 using SolarGridLK.Application.DTOs;
@@ -11,7 +11,9 @@ namespace SolarGridLK.Application.Interfaces;
 
 public interface IQrService
 {
-    Task<QrGenerationResultDto> GenerateForReservationAsync(string reservationId);
+    string GenerateToken();
+
+    string BuildQrImage(string token);
 
     Task<string> GetQrImageAsync(string reservationId);
 

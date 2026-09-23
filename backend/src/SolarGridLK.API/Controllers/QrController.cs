@@ -1,8 +1,8 @@
 /*
  * File: QrController.cs
  * Project: SolarGridLK.API
- * Description: Endpoints for QR generation on approval, QR image retrieval,
- *              and Grid Operator QR verification of energy transfers.
+ * Description: QR image retrieval and Grid Operator QR verification endpoints.
+ * Author: Buwaneka Vishwajith
  */
 
 using Microsoft.AspNetCore.Authorization;
@@ -23,39 +23,15 @@ public class QrController : ControllerBase
         _qrService = qrService;
     }
 
-    [HttpPost("reservations/{reservationId}/generate")]
-    [Authorize(Policy = "BackofficeOnly")]
-    public async Task<IActionResult> GenerateQr(string reservationId)
-    {
-        // Generate a QR code for an approved reservation (Backoffice action).
-        try
-        {
-            var result = await _qrService
-                .GenerateForReservationAsync(reservationId);
-
-            return Ok(ApiResponse<QrGenerationResultDto>.Ok(
-                result,
-                "QR code generated successfully."));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(
-                ApiResponse<QrGenerationResultDto>.Fail(ex.Message));
-        }
-    }
-
     [HttpGet("reservations/{reservationId}/image")]
     [Authorize]
     public async Task<IActionResult> GetQrImage(string reservationId)
     {
-        // Return the QR image for display on the prosumer/operator client.
+        // Return the QR image for the prosumer/operator client to display.
         try
         {
             var image = await _qrService.GetQrImageAsync(reservationId);
-
-            return Ok(ApiResponse<string>.Ok(
-                image,
-                "QR image retrieved successfully."));
+            return Ok(ApiResponse<string>.Ok(image, "QR image retrieved successfully."));
         }
         catch (InvalidOperationException ex)
         {
@@ -65,22 +41,18 @@ public class QrController : ControllerBase
 
     [HttpPost("verify")]
     [Authorize(Policy = "GridOperatorOnly")]
-    public async Task<IActionResult> Verify(
-        [FromBody] QrVerifyRequestDto request)
+    public async Task<IActionResult> Verify([FromBody] QrVerifyRequestDto request)
     {
-        // Verify a scanned QR token and finalize the energy transfer (Grid Operator).
+        // Verify a scanned QR token and finalize the transfer (Grid Operator).
         try
         {
             var result = await _qrService.VerifyAsync(request.Token);
-
             return Ok(ApiResponse<QrVerificationResultDto>.Ok(
-                result,
-                "Energy transfer verified and completed."));
+                result, "Energy transfer verified and completed."));
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(
-                ApiResponse<QrVerificationResultDto>.Fail(ex.Message));
+            return BadRequest(ApiResponse<QrVerificationResultDto>.Fail(ex.Message));
         }
     }
 }

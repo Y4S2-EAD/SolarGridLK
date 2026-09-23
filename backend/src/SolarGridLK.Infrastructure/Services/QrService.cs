@@ -1,8 +1,9 @@
 /*
  * File: QrService.cs
  * Project: SolarGridLK.Infrastructure
- * Description: Generates QR tokens/images on reservation approval and verifies
- *              scanned QR codes to finalize energy transfers.
+ * Description: Generates QR tokens/images for approved reservations and verifies scanned
+ *              QR codes, delegating the Approved->Completed transition to the reservation service.
+ * Author: Buwaneka Vishwajith
  */
 
 using System.Security.Cryptography;
@@ -16,51 +17,41 @@ namespace SolarGridLK.Infrastructure.Services;
 public class QrService : IQrService
 {
     private readonly IReservationRepository _reservationRepository;
+    private readonly IReservationService _reservationService;
 
-    public QrService(IReservationRepository reservationRepository)
+    public QrService(
+        IReservationRepository reservationRepository,
+        IReservationService reservationService)
     {
         _reservationRepository = reservationRepository;
+        _reservationService = reservationService;
     }
 
-    public async Task<QrGenerationResultDto> GenerateForReservationAsync(
-        string reservationId)
+    public string GenerateToken()
     {
-        // Generate and persist a QR token for an approved reservation.
-        var reservation = await _reservationRepository
-            .GetByIdAsync(reservationId);
+        // Produce a URL-safe 256-bit cryptographically-random token.
+        var bytes = RandomNumberGenerator.GetBytes(32);
 
-        if (reservation == null)
-        {
-            throw new InvalidOperationException("Reservation not found.");
-        }
+        return Convert.ToBase64String(bytes)
+            .Replace("+", "-")
+            .Replace("/", "_")
+            .Replace("=", string.Empty);
+    }
 
-        if (reservation.Status != ReservationStatus.Approved)
-        {
-            throw new InvalidOperationException(
-                "A QR code can only be generated for an approved reservation.");
-        }
-
-        // 256-bit cryptographically-random, unforgeable token.
-        var token = GenerateSecureToken();
-
-        reservation.QrCode = token;
-        reservation.LastModifiedAt = DateTime.UtcNow;
-
-        await _reservationRepository.UpdateAsync(reservation);
-
-        return new QrGenerationResultDto
-        {
-            ReservationId = reservation.Id,
-            Token = token,
-            QrImageBase64 = BuildQrImage(token)
-        };
+    public string BuildQrImage(string token)
+    {
+        // Encode a token into a PNG QR image (cross-platform, no System.Drawing).
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(token, QRCodeGenerator.ECCLevel.Q);
+        var pngQr = new PngByteQRCode(data);
+        var pngBytes = pngQr.GetGraphic(20);
+        return "data:image/png;base64," + Convert.ToBase64String(pngBytes);
     }
 
     public async Task<string> GetQrImageAsync(string reservationId)
     {
-        // Rebuild the QR image for an already-generated reservation token.
-        var reservation = await _reservationRepository
-            .GetByIdAsync(reservationId);
+        // Rebuild the QR image from an already-approved reservation's stored token.
+        var reservation = await _reservationRepository.GetByIdAsync(reservationId);
 
         if (reservation == null)
         {
@@ -84,73 +75,39 @@ public class QrService : IQrService
             throw new InvalidOperationException("QR token is required.");
         }
 
-        var reservation = await _reservationRepository
-            .GetByQrCodeAsync(token);
+        var reservation = await _reservationRepository.GetByQrCodeAsync(token);
 
         if (reservation == null)
         {
-            throw new InvalidOperationException(
-                "Invalid or unrecognized QR code.");
+            throw new InvalidOperationException("Invalid or unrecognized QR code.");
         }
 
+        // Friendly messages for the common invalid states (replay protection).
         if (reservation.Status == ReservationStatus.Completed)
         {
-            throw new InvalidOperationException(
-                "This energy transfer has already been completed.");
+            throw new InvalidOperationException("This energy transfer has already been completed.");
         }
 
         if (reservation.Status == ReservationStatus.Cancelled)
         {
-            throw new InvalidOperationException(
-                "This reservation was cancelled.");
+            throw new InvalidOperationException("This reservation was cancelled.");
         }
 
-        if (reservation.Status != ReservationStatus.Approved)
+        // Delegate the Approved -> Completed transition to her service (single source of lifecycle truth).
+        var completed = await _reservationService.CompleteReservationAsync(reservation.Id);
+
+        if (completed == null)
         {
-            throw new InvalidOperationException(
-                "This reservation has not been approved.");
+            throw new InvalidOperationException("Reservation not found.");
         }
-
-        // Mark the transfer as completed.
-        reservation.Status = ReservationStatus.Completed;
-        reservation.LastModifiedAt = DateTime.UtcNow;
-
-        await _reservationRepository.UpdateAsync(reservation);
 
         return new QrVerificationResultDto
         {
-            ReservationId = reservation.Id,
-            ProsumerNic = reservation.ProsumerNic,
-            NodeId = reservation.NodeId,
-            SlotDateTime = reservation.SlotDateTime,
-            Status = reservation.Status.ToString()
+            ReservationId = completed.Id,
+            ProsumerNic = completed.ProsumerNic,
+            NodeId = completed.NodeId,
+            SlotDateTime = completed.SlotDateTime,
+            Status = completed.Status
         };
-    }
-
-    private static string GenerateSecureToken()
-    {
-        // Produce a URL-safe 256-bit random token.
-        var bytes = RandomNumberGenerator.GetBytes(32);
-
-        return Convert.ToBase64String(bytes)
-            .Replace("+", "-")
-            .Replace("/", "_")
-            .Replace("=", string.Empty);
-    }
-
-    private static string BuildQrImage(string payload)
-    {
-        // Encode the payload into a PNG QR image (cross-platform, no System.Drawing).
-        using var generator = new QRCodeGenerator();
-
-        using var data = generator.CreateQrCode(
-            payload,
-            QRCodeGenerator.ECCLevel.Q);
-
-        var pngQr = new PngByteQRCode(data);
-
-        var pngBytes = pngQr.GetGraphic(20);
-
-        return "data:image/png;base64," + Convert.ToBase64String(pngBytes);
     }
 }
