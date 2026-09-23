@@ -16,10 +16,12 @@ namespace SolarGridLK.API.Controllers;
 public class ReservationsController : ControllerBase
 {
     private readonly IReservationService _reservationService;
+    private readonly IQrService _qrService;
 
-    public ReservationsController(IReservationService reservationService)
+    public ReservationsController(IReservationService reservationService, IQrService qrService)
     {
         _reservationService = reservationService;
+        _qrService = qrService;
     }
 
     [HttpPost]
@@ -79,12 +81,13 @@ public class ReservationsController : ControllerBase
     }
 
     [HttpPost("{id}/approve")]
-    public async Task<IActionResult> Approve(string id, [FromBody] string qrCode)
+    public async Task<IActionResult> Approve(string id)
     {
         // Approve a pending reservation and attach the generated QR code.
         try
         {
-            var reservation = await _reservationService.ApproveReservationAsync(id, qrCode);
+            var token = _qrService.GenerateToken();
+            var reservation = await _reservationService.ApproveReservationAsync(id, token);
             if (reservation == null)
                 return NotFound(new { success = false, message = "Reservation not found." });
 
