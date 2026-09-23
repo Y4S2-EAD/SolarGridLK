@@ -10,6 +10,7 @@ import { AuthProvider } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import BackofficeDashboard from "./pages/BackofficeDashboard";
 import UserManagementPage from "./pages/UserManagementPage";
+import ReservationsPage from "./pages/ReservationsPage";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import BackofficeLayout from "./components/BackofficeLayout";
@@ -53,6 +54,11 @@ const App = () => {
                                 <UserManagementPage />
                             }
                         />
+
+                        <Route
+                            path="reservations"
+                            element={<ReservationsPage />}
+                        />
                     </Route>
 
                     <Route
@@ -65,6 +71,11 @@ const App = () => {
                     >
                         <Route index element={<TransfersMonitorPage />} />
                         <Route path="verify" element={<VerifyTransferPage />} />
+
+                        <Route
+                            path="reservations"
+                            element={<ReservationsPage />}
+                        />
                     </Route>
                     <Route
                         path="/grid-operator/verify"

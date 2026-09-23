@@ -4,6 +4,8 @@ import { useAuth } from "../context/AuthContext";
 const navItems = [
     { to: "/grid-operator", label: "Transfers Monitor", end: true },
     { to: "/grid-operator/verify", label: "Verify Transfer" },
+    { to: "/grid-operator/reservations", label: "Reservations" },
+
 ];
 
 const initialsOf = (name = "?") =>
