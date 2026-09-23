@@ -121,6 +121,17 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("WebClient", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 // Build Application
 var app = builder.Build();
 
@@ -135,6 +146,9 @@ using (var scope = app.Services.CreateScope())
 
 // HTTP Request Pipeline
 app.UseHttpsRedirection();
+
+// CORS
+app.UseCors("WebClient");
 
 // Exception Handling Middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
