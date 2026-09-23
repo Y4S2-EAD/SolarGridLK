@@ -86,6 +86,8 @@ builder.Services.AddScoped<IReservationRepository, ReservationRepository>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<DatabaseSeeder>();
 
+builder.Services.AddScoped<IQrService, QrService>();
+
 // Controllers
 builder.Services.AddControllers();
 
