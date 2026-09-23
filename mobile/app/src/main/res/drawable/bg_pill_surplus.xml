@@ -1,0 +1,5 @@
+<!-- bg_pill_surplus.xml -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#1A38BDF8"/>
+    <corners android:radius="20dp"/>
+</shape>

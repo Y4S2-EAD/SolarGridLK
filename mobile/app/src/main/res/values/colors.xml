@@ -13,4 +13,10 @@
     <color name="text_hint">#55637F</color>
     <color name="error">#F87171</color>
     <color name="success">#34D399</color>
+
+    <color name="grid_bg_base">#070D1A</color>
+    <color name="grid_surface">#0A1122</color>
+    <color name="grid_border">#152036</color>
+    <color name="accent_cyan">#67E8F9</color>
+    <color name="sky_400">#38BDF8</color>
 </resources>
