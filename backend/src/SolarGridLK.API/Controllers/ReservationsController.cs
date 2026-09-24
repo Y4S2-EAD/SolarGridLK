@@ -8,11 +8,13 @@
 using Microsoft.AspNetCore.Mvc;
 using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SolarGridLK.API.Controllers;
 
 [ApiController]
 [Route("api/reservations")]
+[Authorize]
 public class ReservationsController : ControllerBase
 {
     private readonly IReservationService _reservationService;
@@ -81,6 +83,7 @@ public class ReservationsController : ControllerBase
     }
 
     [HttpPost("{id}/approve")]
+    [Authorize(Policy = "GridOperatorOnly")]
     public async Task<IActionResult> Approve(string id)
     {
         // Approve a pending reservation and attach the generated QR code.
@@ -100,6 +103,7 @@ public class ReservationsController : ControllerBase
     }
 
     [HttpPost("{id}/complete")]
+    [Authorize(Policy = "GridOperatorOnly")]
     public async Task<IActionResult> Complete(string id)
     {
         // Mark an approved reservation as completed once the energy transfer is finalized.
