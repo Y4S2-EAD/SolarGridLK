@@ -8,18 +8,22 @@
 using Microsoft.AspNetCore.Mvc;
 using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SolarGridLK.API.Controllers;
 
 [ApiController]
 [Route("api/reservations")]
+[Authorize]
 public class ReservationsController : ControllerBase
 {
     private readonly IReservationService _reservationService;
+    private readonly IQrService _qrService;
 
-    public ReservationsController(IReservationService reservationService)
+    public ReservationsController(IReservationService reservationService, IQrService qrService)
     {
         _reservationService = reservationService;
+        _qrService = qrService;
     }
 
     [HttpPost]
@@ -79,12 +83,14 @@ public class ReservationsController : ControllerBase
     }
 
     [HttpPost("{id}/approve")]
-    public async Task<IActionResult> Approve(string id, [FromBody] string qrCode)
+    [Authorize(Policy = "GridOperatorOnly")]
+    public async Task<IActionResult> Approve(string id)
     {
         // Approve a pending reservation and attach the generated QR code.
         try
         {
-            var reservation = await _reservationService.ApproveReservationAsync(id, qrCode);
+            var token = _qrService.GenerateToken();
+            var reservation = await _reservationService.ApproveReservationAsync(id, token);
             if (reservation == null)
                 return NotFound(new { success = false, message = "Reservation not found." });
 
@@ -97,6 +103,7 @@ public class ReservationsController : ControllerBase
     }
 
     [HttpPost("{id}/complete")]
+    [Authorize(Policy = "GridOperatorOnly")]
     public async Task<IActionResult> Complete(string id)
     {
         // Mark an approved reservation as completed once the energy transfer is finalized.

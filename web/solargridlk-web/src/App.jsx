@@ -9,11 +9,15 @@ import { AuthProvider } from "./context/AuthContext";
 
 import LoginPage from "./pages/LoginPage";
 import BackofficeDashboard from "./pages/BackofficeDashboard";
-import GridOperatorDashboard from "./pages/GridOperatorDashboard";
 import UserManagementPage from "./pages/UserManagementPage";
+import ReservationsPage from "./pages/ReservationsPage";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import BackofficeLayout from "./components/BackofficeLayout";
+
+import GridOperatorLayout from "./components/GridOperatorLayout";
+import VerifyTransferPage from "./pages/VerifyTransferPage";
+import TransfersMonitorPage from "./pages/TransfersMonitorPage";
 
 const App = () => {
     return (
@@ -50,17 +54,43 @@ const App = () => {
                                 <UserManagementPage />
                             }
                         />
+
+                        <Route
+                            path="reservations"
+                            element={<ReservationsPage />}
+                        />
                     </Route>
 
                     <Route
                         path="/grid-operator"
                         element={
-                            <ProtectedRoute
-                                allowedRoles={[
-                                    "GridOperator",
-                                ]}
-                            >
-                                <GridOperatorDashboard />
+                            <ProtectedRoute allowedRoles={["GridOperator"]}>
+                                <GridOperatorLayout />
+                            </ProtectedRoute>
+                        }
+                    >
+                        <Route index element={<TransfersMonitorPage />} />
+                        <Route path="verify" element={<VerifyTransferPage />} />
+
+                        <Route
+                            path="reservations"
+                            element={<ReservationsPage />}
+                        />
+                    </Route>
+                    <Route
+                        path="/grid-operator/verify"
+                        element={
+                            <ProtectedRoute allowedRoles={["GridOperator"]}>
+                                <VerifyTransferPage />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/grid-operator/transfers"
+                        element={
+                            <ProtectedRoute allowedRoles={["GridOperator"]}>
+                                <TransfersMonitorPage />
                             </ProtectedRoute>
                         }
                     />
