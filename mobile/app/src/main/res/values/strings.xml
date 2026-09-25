@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">SolarGridLK</string>
+
+    <string name="app_name_short">SolarGridLK</string>
+    <string name="forgot_password">Forgot password?</string>
+    <string name="remember_me">Remember me</string>
+    <string name="sign_in">Sign in</string>
+</resources>
