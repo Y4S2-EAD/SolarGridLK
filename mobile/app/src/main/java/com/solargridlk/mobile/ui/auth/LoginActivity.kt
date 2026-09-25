@@ -16,6 +16,7 @@ import com.solargridlk.mobile.data.repository.AuthRepository
 import com.solargridlk.mobile.ui.backoffice.BackofficeHomeActivity
 import com.solargridlk.mobile.ui.gridoperator.GridOperatorHomeActivity
 import com.solargridlk.mobile.ui.prosumer.ProsumerHomeActivity
+import com.solargridlk.mobile.ui.prosumer.ProsumerRegisterActivity
 import com.solargridlk.mobile.utils.SessionManager
 import kotlinx.coroutines.launch
 
@@ -40,6 +41,14 @@ class LoginActivity : AppCompatActivity() {
 
         initializeViews()
         setupLoginButton()
+        setupRegisterLink()
+    }
+
+    private fun setupRegisterLink() {
+        // Open prosumer registration. Staff login is left unchanged.
+        findViewById<TextView>(R.id.registerProsumerText).setOnClickListener {
+            startActivity(Intent(this, ProsumerRegisterActivity::class.java))
+        }
     }
 
     private fun initializeViews() {

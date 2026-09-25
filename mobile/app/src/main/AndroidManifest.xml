@@ -41,6 +41,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.prosumer.ProsumerRegisterActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.prosumer.ProsumerHomeActivity"
             android:exported="false" />
 

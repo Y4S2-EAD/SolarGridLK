@@ -176,6 +176,19 @@
                 android:padding="10dp"
                 android:visibility="gone" />
 
+            <TextView
+                android:id="@+id/registerProsumerText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:minHeight="48dp"
+                android:text="Register as Prosumer"
+                android:textSize="14sp"
+                android:textColor="@color/accent_amber"
+                android:clickable="true"
+                android:focusable="true" />
+
         </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>
