@@ -15,6 +15,7 @@ class GridOperatorHomeActivity : AppCompatActivity() {
 
     private lateinit var welcomeText: TextView
     private lateinit var logoutButton: Button
+    private lateinit var scanVerifyButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Initialize the Grid Operator home screen.
@@ -27,12 +28,18 @@ class GridOperatorHomeActivity : AppCompatActivity() {
         initializeViews()
         displayUserInformation()
         setupLogoutButton()
+        setupScanButton()
+
+        findViewById<Button>(R.id.nearbyNodesButton).setOnClickListener {
+            startActivity(Intent(this, NodesMapActivity::class.java))
+        }
     }
 
     private fun initializeViews() {
         // Connect the activity variables with the XML controls.
         welcomeText = findViewById(R.id.welcomeText)
         logoutButton = findViewById(R.id.logoutButton)
+        scanVerifyButton = findViewById(R.id.scanVerifyButton)
     }
 
     private fun displayUserInformation() {
@@ -41,6 +48,13 @@ class GridOperatorHomeActivity : AppCompatActivity() {
 
         welcomeText.text =
             "Welcome, ${fullName ?: "Grid Operator"}"
+    }
+
+    private fun setupScanButton() {
+        // Open the QR scan & verify screen.
+        scanVerifyButton.setOnClickListener {
+            startActivity(Intent(this, QrScanActivity::class.java))
+        }
     }
 
     private fun setupLogoutButton() {
