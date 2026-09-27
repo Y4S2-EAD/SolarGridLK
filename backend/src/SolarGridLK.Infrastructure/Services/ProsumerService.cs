@@ -9,14 +9,63 @@ public class ProsumerService : IProsumerService
 {
     private readonly IProsumerRepository _prosumerRepository;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IJwtService _jwtService;
 
     public ProsumerService(
         IProsumerRepository prosumerRepository,
-        IPasswordHasher passwordHasher)
+        IPasswordHasher passwordHasher,
+        IJwtService jwtService)
     {
-        // Store the repository and the shared password hasher.
+        // Store the repository, the shared password hasher, and the shared JWT signer.
         _prosumerRepository = prosumerRepository;
         _passwordHasher = passwordHasher;
+        _jwtService = jwtService;
+    }
+
+    public async Task<LoginResponseDto?> LoginAsync(ProsumerLoginRequestDto request)
+    {
+        // Authenticate a prosumer and reject a deactivated account after the password matches.
+        if (request == null || string.IsNullOrWhiteSpace(request.Nic))
+        {
+            throw new InvalidOperationException("NIC is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            throw new InvalidOperationException("Password is required.");
+        }
+
+        var nic = NormalizeNic(request.Nic);
+        var prosumer = await _prosumerRepository.GetByNicAsync(nic);
+
+        if (prosumer == null)
+        {
+            return null;
+        }
+
+        var passwordValid = _passwordHasher.VerifyPassword(
+            request.Password,
+            prosumer.PasswordHash);
+
+        if (!passwordValid)
+        {
+            return null;
+        }
+
+        if (prosumer.Status == ProsumerStatus.Deactivated)
+        {
+            throw new InvalidOperationException(
+                "Prosumer account is deactivated.");
+        }
+
+        return new LoginResponseDto
+        {
+            Token = _jwtService.GenerateProsumerToken(prosumer),
+            Username = prosumer.Nic,
+            Role = "Prosumer",
+            FullName = prosumer.FullName,
+            ExpiresAt = _jwtService.GetExpiration()
+        };
     }
 
     public async Task<ProsumerDto> RegisterAsync(CreateProsumerDto request)

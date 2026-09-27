@@ -7,6 +7,9 @@ public interface IProsumerService
     // Register a prosumer when the NIC is not already in use.
     Task<ProsumerDto> RegisterAsync(CreateProsumerDto request);
 
+    // Authenticate a prosumer by NIC and password. Returns null when the credentials do not match.
+    Task<LoginResponseDto?> LoginAsync(ProsumerLoginRequestDto request);
+
     // Retrieve one prosumer profile by NIC.
     Task<ProsumerDto?> GetByNicAsync(string nic);
 

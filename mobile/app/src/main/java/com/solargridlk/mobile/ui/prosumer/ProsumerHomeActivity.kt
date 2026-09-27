@@ -62,15 +62,9 @@ class ProsumerHomeActivity : AppCompatActivity() {
         sessionManager = SessionManager(this)
         reservationRepository = ReservationRepository(RetrofitClient.getReservationApi(this))
 
-        // TEMP: Test session fallback (remove before submission)
         if (!sessionManager.isLoggedIn()) {
-            sessionManager.saveSession(
-                token = "test",
-                username = "200012345678",
-                role = "Prosumer",
-                fullName = "Test Prosumer",
-                expiresAt = "2099-01-01"
-            )
+            openLogin()
+            return
         }
 
         initializeViews()
@@ -80,6 +74,14 @@ class ProsumerHomeActivity : AppCompatActivity() {
         setupLogout()
 
         loadDashboard()
+    }
+
+    private fun openLogin() {
+        // Send an unauthenticated visitor to login instead of creating a fake session.
+        val intent = Intent(this, LoginActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
     }
 
     private fun initializeViews() {

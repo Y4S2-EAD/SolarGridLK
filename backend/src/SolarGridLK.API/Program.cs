@@ -121,6 +121,13 @@ builder.Services.AddAuthorization(options =>
                 "Backoffice",
                 "GridOperator");
         });
+
+    options.AddPolicy(
+        "ProsumerOnly",
+        policy =>
+        {
+            policy.RequireRole("Prosumer");
+        });
 });
 
 // Swagger

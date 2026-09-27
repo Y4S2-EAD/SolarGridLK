@@ -9,10 +9,14 @@ namespace SolarGridLK.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly IProsumerService _prosumerService;
 
-    public AuthController(IUserService userService)
+    public AuthController(
+        IUserService userService,
+        IProsumerService prosumerService)
     {
         _userService = userService;
+        _prosumerService = prosumerService;
     }
 
     [HttpPost("login")]
@@ -37,15 +41,43 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("prosumer-login")]
-    public IActionResult ProsumerLogin()
+    public async Task<IActionResult> ProsumerLogin(
+        [FromBody] ProsumerLoginRequestDto request)
     {
-        // Keep prosumer authentication reserved for the prosumer module.
-        return StatusCode(
-            StatusCodes.Status501NotImplemented,
-            new
+        // Authenticate a prosumer account. Staff login is unchanged.
+        try
+        {
+            var result = await _prosumerService.LoginAsync(request);
+
+            if (result == null)
+            {
+                return Unauthorized(new
+                {
+                    success = false,
+                    message = "Invalid NIC or password."
+                });
+            }
+
+            return Ok(ApiResponse<LoginResponseDto>.Ok(
+                result,
+                "Login successful."));
+        }
+        catch (InvalidOperationException ex)
+            when (ex.Message == "Prosumer account is deactivated.")
+        {
+            return Unauthorized(new
             {
                 success = false,
-                message = "Prosumer login will be implemented by the prosumer module."
+                message = ex.Message
             });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
     }
 }
