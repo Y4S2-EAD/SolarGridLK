@@ -3,49 +3,137 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:gravity="center_horizontal"
-    android:padding="24dp">
+    android:background="@color/grid_bg_base">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Verify Transfer"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="24dp" />
-
-    <Button
-        android:id="@+id/scanButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Scan QR code" />
-
-    <EditText
-        android:id="@+id/tokenInput"
+    <!-- Topbar -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:hint="Paste QR token here"
-        android:textColor="@color/white"
-        android:textColorHint="#7a869a"
-        android:inputType="text"
-        android:imeOptions="actionDone" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/grid_surface"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="12dp">
 
-    <Button
-        android:id="@+id/verifyButton"
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_arrow_back"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Back" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="Scan &amp; Verify"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary" />
+    </LinearLayout>
+
+    <View
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="Verify token"
-        android:backgroundTint="@color/accent_cyan"
-        android:textColor="@color/black" />
+        android:layout_height="1dp"
+        android:background="@color/grid_border" />
 
-    <TextView
-        android:id="@+id/resultText"
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:textSize="16sp" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Verify an energy transfer"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Scan the prosumer's booking QR, or enter the token manually."
+                android:textSize="12sp"
+                android:textColor="@color/text_muted" />
+
+            <Button
+                android:id="@+id/scanButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="18dp"
+                android:text="Scan QR code"
+                android:textAllCaps="false"
+                android:textSize="14sp"
+                android:backgroundTint="@color/accent_cyan"
+                android:textColor="@color/black" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:layout_marginBottom="10dp"
+                android:text="OR ENTER TOKEN"
+                android:textSize="10sp"
+                android:fontFamily="monospace"
+                android:textColor="@color/text_muted" />
+
+            <!-- Manual entry card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card_grid"
+                android:padding="14dp">
+
+                <EditText
+                    android:id="@+id/tokenInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Paste QR token"
+                    android:inputType="text"
+                    android:imeOptions="actionDone"
+                    android:background="@drawable/bg_input_grid"
+                    android:padding="12dp"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+                <Button
+                    android:id="@+id/verifyButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_button_outline_cyan"
+                    android:text="Verify token"
+                    android:textAllCaps="false"
+                    android:textSize="13sp"
+                    android:textColor="@color/accent_cyan" />
+            </LinearLayout>
+
+            <!-- Result -->
+            <TextView
+                android:id="@+id/resultText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:padding="14dp"
+                android:background="@drawable/bg_card_grid"
+                android:text=""
+                android:textSize="13sp"
+                android:fontFamily="monospace"
+                android:textColor="@color/text_primary"
+                android:visibility="gone" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 </LinearLayout>

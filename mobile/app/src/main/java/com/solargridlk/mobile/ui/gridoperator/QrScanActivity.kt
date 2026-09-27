@@ -3,6 +3,7 @@ package com.solargridlk.mobile.ui.gridoperator
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -32,6 +33,8 @@ class QrScanActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_qr_scan)
+
+        findViewById<ImageButton>(R.id.backButton).setOnClickListener { finish() }
 
         scanButton = findViewById(R.id.scanButton)
         resultText = findViewById(R.id.resultText)

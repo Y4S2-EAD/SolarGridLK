@@ -1,6 +1,7 @@
 package com.solargridlk.mobile.ui.gridoperator
 
 import android.os.Bundle
+import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -16,6 +17,9 @@ import com.solargridlk.mobile.R
 import com.solargridlk.mobile.data.api.NodeApiClient
 import com.solargridlk.mobile.data.model.Node
 import kotlinx.coroutines.launch
+import com.solargridlk.mobile.data.local.AppDatabase
+import com.solargridlk.mobile.data.local.NodeDao
+import com.solargridlk.mobile.data.local.NodeEntity
 
 class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -34,6 +38,8 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_nodes_map)
 
+        findViewById<ImageButton>(R.id.backButton).setOnClickListener { finish() }
+
         val mapFragment = supportFragmentManager
             .findFragmentById(R.id.mapFragment) as SupportMapFragment
         mapFragment.getMapAsync(this)
@@ -47,22 +53,38 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun loadNodes() {
         lifecycleScope.launch {
+            val dao = AppDatabase.get(this@NodesMapActivity).nodeDao()
+
             val nodes: List<Node> = try {
                 val res = NodeApiClient.create(this@NodesMapActivity).getNodes()
                 val live = res.body()?.data
                 if (res.isSuccessful && !live.isNullOrEmpty()) {
+                    // cache the real nodes for offline use
+                    dao.upsertAll(
+                        live.filter { it.id != null }.map {
+                            NodeEntity(it.id!!, it.name, it.latitude, it.longitude, it.status, it.capacityKw)
+                        }
+                    )
                     live
                 } else {
-                    Toast.makeText(this@NodesMapActivity,
-                        "Using sample nodes (no live data)", Toast.LENGTH_SHORT).show()
-                    sampleNodes
+                    loadCachedOrSample(dao)
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@NodesMapActivity,
-                    "Offline — showing sample nodes", Toast.LENGTH_SHORT).show()
-                sampleNodes
+                loadCachedOrSample(dao)
             }
+
             plotNodes(nodes)
+        }
+    }
+
+    private suspend fun loadCachedOrSample(dao: NodeDao): List<Node> {
+        val cached = dao.getAll()
+        return if (cached.isNotEmpty()) {
+            Toast.makeText(this, "Offline — showing last saved nodes", Toast.LENGTH_SHORT).show()
+            cached.map { Node(it.id, it.name, it.latitude, it.longitude, it.status, it.capacityKw) }
+        } else {
+            Toast.makeText(this, "Offline — showing sample nodes", Toast.LENGTH_SHORT).show()
+            sampleNodes
         }
     }
 

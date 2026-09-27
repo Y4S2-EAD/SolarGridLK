@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Base64
 import android.view.View
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -18,6 +19,8 @@ class QrDisplayActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_qr_display)
+
+        findViewById<ImageButton>(R.id.backButton).setOnClickListener { finish() }
 
         val reservationId = intent.getStringExtra("reservationId")
         val detail = intent.getStringExtra("detail")   // optional: "NODE-001 · 23 Sep 2026 14:00"
