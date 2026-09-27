@@ -498,6 +498,18 @@
         </LinearLayout>
 
         <Button
+            android:id="@+id/scanVerifyButton"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_button_outline_cyan"
+            android:text="Scan &amp; Verify QR"
+            android:textAllCaps="false"
+            android:textColor="@color/accent_cyan"
+            android:textSize="13sp" />
+
+
+        <Button
             android:id="@+id/logoutButton"
             android:layout_width="match_parent"
             android:layout_height="46dp"
