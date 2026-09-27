@@ -30,6 +30,9 @@ class GridOperatorHomeActivity : AppCompatActivity() {
         setupLogoutButton()
         setupScanButton()
 
+        findViewById<Button>(R.id.nearbyNodesButton).setOnClickListener {
+            startActivity(Intent(this, NodesMapActivity::class.java))
+        }
     }
 
     private fun initializeViews() {

@@ -508,6 +508,14 @@
             android:textColor="@color/accent_cyan"
             android:textSize="13sp" />
 
+        <Button
+            android:id="@+id/nearbyNodesButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Nearby nodes (map)"
+            android:backgroundTint="@color/accent_cyan"
+            android:textColor="@color/black" />
 
         <Button
             android:id="@+id/logoutButton"
