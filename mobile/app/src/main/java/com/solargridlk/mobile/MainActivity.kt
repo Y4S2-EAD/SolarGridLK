@@ -7,6 +7,7 @@ import com.solargridlk.mobile.ui.auth.LoginActivity
 import com.solargridlk.mobile.ui.backoffice.BackofficeHomeActivity
 import com.solargridlk.mobile.ui.gridoperator.GridOperatorHomeActivity
 import com.solargridlk.mobile.utils.SessionManager
+import com.solargridlk.mobile.ui.prosumer.ProsumerHomeActivity
 
 class MainActivity : AppCompatActivity() {
 
@@ -36,6 +37,10 @@ class MainActivity : AppCompatActivity() {
 
             "GridOperator" -> {
                 openGridOperatorHome()
+            }
+
+            "Prosumer" -> {
+                openProsumerHome()
             }
 
             else -> {
@@ -72,6 +77,17 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(
             this,
             GridOperatorHomeActivity::class.java
+        )
+
+        startActivity(intent)
+        finish()
+    }
+
+    private fun openProsumerHome() {
+        // Open the Prosumer home screen for a Prosumer user.
+        val intent = Intent(
+            this,
+            ProsumerHomeActivity::class.java
         )
 
         startActivity(intent)
