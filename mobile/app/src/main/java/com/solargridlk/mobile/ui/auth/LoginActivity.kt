@@ -1,5 +1,6 @@
 package com.solargridlk.mobile.ui.auth
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
@@ -12,11 +13,11 @@ import com.solargridlk.mobile.R
 import com.solargridlk.mobile.data.api.RetrofitClient
 import com.solargridlk.mobile.data.model.LoginData
 import com.solargridlk.mobile.data.repository.AuthRepository
-import kotlinx.coroutines.launch
-import com.solargridlk.mobile.utils.SessionManager
-import android.content.Intent
 import com.solargridlk.mobile.ui.backoffice.BackofficeHomeActivity
 import com.solargridlk.mobile.ui.gridoperator.GridOperatorHomeActivity
+import com.solargridlk.mobile.ui.prosumer.ProsumerHomeActivity
+import com.solargridlk.mobile.utils.SessionManager
+import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
 
@@ -32,9 +33,7 @@ class LoginActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Initialize the login screen and its controls.
         super.onCreate(savedInstanceState)
-
         setContentView(R.layout.activity_login)
 
         sessionManager = SessionManager(this)
@@ -44,7 +43,6 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun initializeViews() {
-        // Connect Kotlin variables with the XML login controls.
         usernameInput = findViewById(R.id.usernameInput)
         passwordInput = findViewById(R.id.passwordInput)
         loginButton = findViewById(R.id.loginButton)
@@ -53,19 +51,14 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun setupLoginButton() {
-        // Start the login request when the user presses Login.
         loginButton.setOnClickListener {
             performLogin()
         }
     }
 
     private fun performLogin() {
-        // Validate the entered credentials before calling the API.
-        val username =
-            usernameInput.text.toString().trim()
-
-        val password =
-            passwordInput.text.toString()
+        val username = usernameInput.text.toString().trim()
+        val password = passwordInput.text.toString()
 
         hideError()
 
@@ -91,45 +84,21 @@ class LoginActivity : AppCompatActivity() {
                 if (response.isSuccessful) {
                     val loginResponse = response.body()
 
-                    if (loginResponse?.success == true &&
-                        loginResponse.data != null
-                    ) {
-                        handleLoginSuccess(
-                            loginResponse.data
-                        )
+                    if (loginResponse?.success == true && loginResponse.data != null) {
+                        handleLoginSuccess(loginResponse.data)
                     } else {
-                        showError(
-                            loginResponse?.message
-                                ?: "Login failed."
-                        )
+                        showError(loginResponse?.message ?: "Login failed.")
                     }
                 } else {
                     when (response.code()) {
-                        401 -> {
-                            showError(
-                                "Invalid username or password."
-                            )
-                        }
-
-                        else -> {
-                            showError(
-                                "Login failed. Please try again."
-                            )
-                        }
+                        401 -> showError("Invalid username or password.")
+                        else -> showError("Login failed. Please try again.")
                     }
                 }
 
             } catch (exception: Exception) {
-                // Log the network failure while showing a safe message to the user.
-                android.util.Log.e(
-                    "SolarGridAPI",
-                    "Login request failed",
-                    exception
-                )
-
-                showError(
-                    "Unable to connect to the server."
-                )
+                Log.e("SolarGridAPI", "Login request failed", exception)
+                showError("Unable to connect to the server.")
             } finally {
                 loginButton.isEnabled = true
             }
@@ -137,7 +106,6 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun handleLoginSuccess(loginData: LoginData) {
-        // Save the authenticated user's session after successful login.
         sessionManager.saveSession(
             token = loginData.token,
             username = loginData.username,
@@ -146,35 +114,24 @@ class LoginActivity : AppCompatActivity() {
             expiresAt = loginData.expiresAt
         )
 
-        Log.d(
-            "SolarGridAPI",
-            "Session saved for ${loginData.username}, role=${loginData.role}"
-        )
+        Log.d("SolarGridAPI", "Session saved for ${loginData.username}, role=${loginData.role}")
 
         when (loginData.role) {
             "Backoffice" -> {
-                val intent = Intent(
-                    this,
-                    BackofficeHomeActivity::class.java
-                )
-
-                intent.flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TASK
-
+                val intent = Intent(this, BackofficeHomeActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 startActivity(intent)
             }
 
             "GridOperator" -> {
-                val intent = Intent(
-                    this,
-                    GridOperatorHomeActivity::class.java
-                )
+                val intent = Intent(this, GridOperatorHomeActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(intent)
+            }
 
-                intent.flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TASK
-
+            "Prosumer" -> {
+                val intent = Intent(this, ProsumerHomeActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 startActivity(intent)
             }
 
@@ -186,14 +143,11 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun showError(message: String) {
-        // Display the login error message to the user.
         errorText.text = message
         errorText.visibility = android.view.View.VISIBLE
     }
 
-
     private fun hideError() {
-        // Hide the login error banner before a new login attempt.
         errorText.text = ""
         errorText.visibility = android.view.View.GONE
     }

@@ -8,6 +8,7 @@ import com.solargridlk.mobile.utils.SessionManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 
+
 object RetrofitClient {
 
     // Not const — BuildConfig fields aren't compile-time constants.
