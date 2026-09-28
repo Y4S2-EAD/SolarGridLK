@@ -4,6 +4,7 @@ import com.solargridlk.mobile.data.model.DashboardSummaryResponse
 import com.solargridlk.mobile.data.model.ReservationListResponse
 import com.solargridlk.mobile.data.model.ReservationSingleResponse
 import com.solargridlk.mobile.data.model.UpdateReservationRequest
+import com.solargridlk.mobile.data.model.CreateReservationRequest
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -11,6 +12,7 @@ import retrofit2.http.GET
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.POST
 
 interface ReservationApi {
 
@@ -45,5 +47,11 @@ interface ReservationApi {
     @DELETE("reservations/{id}")
     suspend fun deleteReservation(
         @Path("id") id: String
+    ): Response<ReservationSingleResponse>
+
+    // 6. Create reservation
+    @POST("reservations")
+    suspend fun createReservation(
+        @Body request: CreateReservationRequest
     ): Response<ReservationSingleResponse>
 }

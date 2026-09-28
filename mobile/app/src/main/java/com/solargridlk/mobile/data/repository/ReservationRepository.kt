@@ -5,6 +5,7 @@ import com.solargridlk.mobile.data.model.DashboardSummaryResponse
 import com.solargridlk.mobile.data.model.ReservationListResponse
 import com.solargridlk.mobile.data.model.ReservationSingleResponse
 import com.solargridlk.mobile.data.model.UpdateReservationRequest
+import com.solargridlk.mobile.data.model.CreateReservationRequest
 import retrofit2.Response
 
 class ReservationRepository(private val reservationApi: ReservationApi) {
@@ -44,5 +45,11 @@ class ReservationRepository(private val reservationApi: ReservationApi) {
         id: String
     ): Response<ReservationSingleResponse> {
         return reservationApi.deleteReservation(id)
+    }
+
+    suspend fun createReservation(
+        request: CreateReservationRequest
+    ): Response<ReservationSingleResponse> {
+        return reservationApi.createReservation(request)
     }
 }
