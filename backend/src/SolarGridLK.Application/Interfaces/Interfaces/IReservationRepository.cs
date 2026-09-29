@@ -21,6 +21,8 @@ public interface IReservationRepository
 
     Task<bool> HasActiveReservationsForNodeAsync (string nodeId);
 
+    Task<List<Reservation>> GetByNodeIdAndDateAsync(string nodeId, DateTime date);
+
     Task CreateAsync(Reservation reservation);
 
     Task UpdateAsync(Reservation reservation);
