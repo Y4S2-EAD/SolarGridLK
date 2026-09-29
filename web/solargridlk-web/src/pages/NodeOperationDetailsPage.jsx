@@ -237,7 +237,7 @@ const NodeOperationDetailsPage = () => {
                     disabled={!isActive || saving}
                     className="mt-5 text-sm text-[#0b1120] bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-40 rounded-md px-4 py-2.5 font-medium"
                 >
-                    {saving ? "Updating…" : "Update availability"}
+                    {saving ? "Updating…" : "Update Battery Slots"}
                 </button>
 
                 {!isActive && (

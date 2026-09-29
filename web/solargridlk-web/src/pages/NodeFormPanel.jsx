@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { createNode, updateNode } from "../api/nodeApi";
-import { inputClassName, nodeFieldError, toNodePayload } from "./nodeValidation";
+import { inputClassName, nodeFieldError, sriLankanDistricts, toNodePayload } from "./nodeValidation";
 
 const emptyForm = {
     nodeId: "",
@@ -14,15 +14,22 @@ const emptyForm = {
 
 const textValue = (value) => (value || value === 0 ? String(value) : "");
 
-const formFromNode = (node) => ({
-    nodeId: node?.nodeId || "",
-    name: node?.name || "",
-    location: node?.location || "",
-    latitude: textValue(node?.latitude),
-    longitude: textValue(node?.longitude),
-    capacityKw: textValue(node?.capacityKw),
-    availableBatterySlots: textValue(node?.availableBatterySlots),
-});
+const formFromNode = (node) => {
+    const storedLocation = node?.location || "";
+    const matchedDistrict = sriLankanDistricts.find(
+        (district) => district.toLowerCase() === storedLocation.trim().toLowerCase()
+    );
+
+    return {
+        nodeId: node?.nodeId || "",
+        name: node?.name || "",
+        location: matchedDistrict || storedLocation,
+        latitude: textValue(node?.latitude),
+        longitude: textValue(node?.longitude),
+        capacityKw: textValue(node?.capacityKw),
+        availableBatterySlots: textValue(node?.availableBatterySlots),
+    };
+};
 
 const messageFromError = (requestError, fallback) => {
     const status = requestError.response?.status;
@@ -188,18 +195,30 @@ const NodeFormPanel = ({ mode, node, isOpen, onClose, onCompleted }) => {
 
                     <div>
                         <label htmlFor="location" className="block text-sm text-[#a7b2c7] mb-1.5">
-                            Location
+                            Location / District
                         </label>
-                        <input
+                        <select
                             id="location"
                             name="location"
-                            type="text"
                             value={formData.location}
                             onChange={handleChange}
                             disabled={saving}
-                            required
                             className={inputClassName}
-                        />
+                        >
+                            <option value="">Select District</option>
+                            {formData.location.trim() &&
+                                !sriLankanDistricts.includes(formData.location.trim()) && (
+                                    <option value={formData.location}>{formData.location}</option>
+                                )}
+                            {sriLankanDistricts.map((district) => (
+                                <option key={district} value={district}>
+                                    {district}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1.5 text-xs text-[#7c8ba6]">
+                            Select the Sri Lankan district where this microgrid node is located.
+                        </p>
                     </div>
 
                     <div>

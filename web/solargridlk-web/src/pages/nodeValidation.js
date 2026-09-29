@@ -21,7 +21,7 @@ export const nodeFieldError = (fields, { requireNodeId = false } = {}) => {
     }
 
     if (!fields.location.trim()) {
-        return "Location is required.";
+        return "Please select a district.";
     }
 
     if (fields.latitude.trim() === "") {
@@ -102,6 +102,34 @@ export const toNodePayload = (fields, { includeNodeId = false } = {}) => {
     return payload;
 };
 
+export const sriLankanDistricts = [
+    "Ampara",
+    "Anuradhapura",
+    "Badulla",
+    "Batticaloa",
+    "Colombo",
+    "Galle",
+    "Gampaha",
+    "Hambantota",
+    "Jaffna",
+    "Kalutara",
+    "Kandy",
+    "Kegalle",
+    "Kilinochchi",
+    "Kurunegala",
+    "Mannar",
+    "Matale",
+    "Matara",
+    "Monaragala",
+    "Mullaitivu",
+    "Nuwara Eliya",
+    "Polonnaruwa",
+    "Puttalam",
+    "Ratnapura",
+    "Trincomalee",
+    "Vavuniya",
+];
+
 export const daysOfWeek = [
     "Monday",
     "Tuesday",
@@ -133,12 +161,20 @@ export const scheduleFieldError = (slots) => {
             continue;
         }
 
+        if (!startTime) {
+            return `${slot.dayOfWeek}: start time is required.`;
+        }
+
+        if (!endTime) {
+            return `${slot.dayOfWeek}: end time is required.`;
+        }
+
         if (!scheduleTimePattern.test(startTime) || !scheduleTimePattern.test(endTime)) {
             return "Schedule times must use HH:mm.";
         }
 
         if (startTime >= endTime) {
-            return "Schedule start time must be before end time.";
+            return `${slot.dayOfWeek}: end time must be later than start time.`;
         }
     }
 

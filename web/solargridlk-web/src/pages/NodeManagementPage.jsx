@@ -134,8 +134,8 @@ const NodeManagementPage = () => {
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <h2 className="font-grotesk text-xl font-semibold">Microgrid Node Management</h2>
-                    <p className="text-sm text-[#7c8ba6] mt-1">
-                        Backoffice users manage microgrid nodes.
+                    <p className="text-sm text-[#7c8ba6] mt-1 max-w-xl">
+                        Register and manage solar microgrid nodes and maintain their operational schedules.
                     </p>
                 </div>
 

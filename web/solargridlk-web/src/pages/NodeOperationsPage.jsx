@@ -97,8 +97,9 @@ const NodeOperationsPage = () => {
     return (
         <div className="space-y-6">
             <div>
-                <p className="text-sm text-[#7c8ba6]">
-                    View node status, schedule, and battery slot availability.
+                <h2 className="font-grotesk text-xl font-semibold">Node Operations</h2>
+                <p className="text-sm text-[#7c8ba6] mt-1 max-w-xl">
+                    Monitor microgrid nodes and update current battery slot availability for grid operations.
                 </p>
             </div>
 
@@ -127,7 +128,17 @@ const NodeOperationsPage = () => {
                 </p>
             )}
 
-            {loading && <p className="text-sm text-[#7c8ba6]">Loading nodes…</p>}
+            {loading && (
+                <div className="grid gap-3" aria-live="polite">
+                    <p className="text-sm text-[#7c8ba6]">Loading nodes…</p>
+                    {Array.from({ length: 2 }).map((_, index) => (
+                        <div
+                            key={index}
+                            className="h-28 rounded-md border border-[#1c2942] bg-[#101a30] animate-pulse"
+                        />
+                    ))}
+                </div>
+            )}
 
             {!loading && !error && visible.length === 0 && (
                 <p className="text-sm text-[#7c8ba6]">No nodes match this search.</p>
@@ -156,7 +167,11 @@ const NodeOperationsPage = () => {
                                 </span>
                             </div>
 
-                            <dl className="mt-4 grid sm:grid-cols-3 gap-3 text-sm">
+                            <dl className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                                <div>
+                                    <dt className="text-xs text-[#7c8ba6]">Location</dt>
+                                    <dd className="mt-1">{node.location || "—"}</dd>
+                                </div>
                                 <div>
                                     <dt className="text-xs text-[#7c8ba6]">Capacity</dt>
                                     <dd className="mt-1">{node.capacityKw} kW</dd>
