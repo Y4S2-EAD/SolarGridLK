@@ -47,6 +47,14 @@ public class ReservationRepository : IReservationRepository
         return await _reservations.Find(r => r.NodeId == nodeId && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved)).AnyAsync();
     }
 
+    public async Task<List<Reservation>> GetByNodeIdAndDateAsync(string nodeId, DateTime date)
+    {
+        //Return every reservation for this node on the given day, for slot availability checks
+        var start = date.Date;
+        var end = start.AddDays(1);
+        return await _reservations.Find(r => r.NodeId == nodeId && r.SlotDateTime >= start && r.SlotDateTime < end).ToListAsync();
+    }
+
     public async Task CreateAsync(Reservation reservation)
     {
         //Insert a new reservation into the EnergyReservations collection
