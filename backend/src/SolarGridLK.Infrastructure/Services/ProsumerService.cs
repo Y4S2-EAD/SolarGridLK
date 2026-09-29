@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
 using SolarGridLK.Domain.Entities;
@@ -7,16 +8,73 @@ namespace SolarGridLK.Infrastructure.Services;
 
 public class ProsumerService : IProsumerService
 {
+    private static readonly Regex EmailPattern = new(
+        @"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex PhonePattern = new(
+        @"^0\d{9}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private readonly IProsumerRepository _prosumerRepository;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IJwtService _jwtService;
 
     public ProsumerService(
         IProsumerRepository prosumerRepository,
-        IPasswordHasher passwordHasher)
+        IPasswordHasher passwordHasher,
+        IJwtService jwtService)
     {
-        // Store the repository and the shared password hasher.
+        // Store the repository, the shared password hasher, and the shared JWT signer.
         _prosumerRepository = prosumerRepository;
         _passwordHasher = passwordHasher;
+        _jwtService = jwtService;
+    }
+
+    public async Task<LoginResponseDto?> LoginAsync(ProsumerLoginRequestDto request)
+    {
+        // Authenticate a prosumer and reject a deactivated account after the password matches.
+        if (request == null || string.IsNullOrWhiteSpace(request.Nic))
+        {
+            throw new InvalidOperationException("NIC is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            throw new InvalidOperationException("Password is required.");
+        }
+
+        var nic = NormalizeNic(request.Nic);
+        var prosumer = await _prosumerRepository.GetByNicAsync(nic);
+
+        if (prosumer == null)
+        {
+            return null;
+        }
+
+        var passwordValid = _passwordHasher.VerifyPassword(
+            request.Password,
+            prosumer.PasswordHash);
+
+        if (!passwordValid)
+        {
+            return null;
+        }
+
+        if (prosumer.Status == ProsumerStatus.Deactivated)
+        {
+            throw new InvalidOperationException(
+                "Prosumer account is deactivated.");
+        }
+
+        return new LoginResponseDto
+        {
+            Token = _jwtService.GenerateProsumerToken(prosumer),
+            Username = prosumer.Nic,
+            Role = "Prosumer",
+            FullName = prosumer.FullName,
+            ExpiresAt = _jwtService.GetExpiration()
+        };
     }
 
     public async Task<ProsumerDto> RegisterAsync(CreateProsumerDto request)
@@ -72,6 +130,13 @@ public class ProsumerService : IProsumerService
         UpdateProsumerDto request)
     {
         // Update permitted profile fields and leave the NIC unchanged.
+        if (request == null)
+        {
+            throw new InvalidOperationException("Profile update is required.");
+        }
+
+        ValidateProfileFields(request.FullName, request.Email, request.PhoneNumber);
+
         var prosumer = await _prosumerRepository.GetByNicAsync(
             NormalizeNic(nic));
 
@@ -112,6 +177,8 @@ public class ProsumerService : IProsumerService
             prosumer.Address = request.Address.Trim();
         }
 
+        prosumer.LastModifiedAt = DateTime.UtcNow;
+
         await _prosumerRepository.UpdateAsync(prosumer);
 
         return MapToDto(prosumer);
@@ -151,6 +218,7 @@ public class ProsumerService : IProsumerService
         }
 
         prosumer.Status = ProsumerStatus.Deactivated;
+        prosumer.LastModifiedAt = DateTime.UtcNow;
 
         await _prosumerRepository.UpdateAsync(prosumer);
 
@@ -175,6 +243,7 @@ public class ProsumerService : IProsumerService
         }
 
         prosumer.Status = ProsumerStatus.Active;
+        prosumer.LastModifiedAt = DateTime.UtcNow;
 
         await _prosumerRepository.UpdateAsync(prosumer);
 
@@ -203,7 +272,34 @@ public class ProsumerService : IProsumerService
             PhoneNumber = prosumer.PhoneNumber,
             Address = prosumer.Address,
             Status = prosumer.Status.ToString(),
-            CreatedAt = prosumer.CreatedAt
+            CreatedAt = prosumer.CreatedAt,
+            LastModifiedAt = prosumer.LastModifiedAt
         };
+    }
+
+    private static void ValidateProfileFields(
+        string? fullName,
+        string? email,
+        string? phoneNumber)
+    {
+        // Apply the same profile rules the web form uses. Blank optional fields stay blank.
+        if (fullName != null && string.IsNullOrWhiteSpace(fullName))
+        {
+            throw new InvalidOperationException("Full name is required.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(email) &&
+            !EmailPattern.IsMatch(email.Trim()))
+        {
+            throw new InvalidOperationException(
+                "Enter a valid email address, such as name@gmail.com.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(phoneNumber) &&
+            !PhonePattern.IsMatch(phoneNumber.Trim()))
+        {
+            throw new InvalidOperationException(
+                "Enter a 10-digit mobile number starting with 0.");
+        }
     }
 }

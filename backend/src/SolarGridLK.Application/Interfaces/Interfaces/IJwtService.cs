@@ -14,5 +14,8 @@ public interface IJwtService
 {
     string GenerateToken(User user);
 
+    // Sign a Prosumer JWT with the same issuer, audience, and key as staff tokens.
+    string GenerateProsumerToken(Prosumer prosumer);
+
     DateTime GetExpiration();
 }

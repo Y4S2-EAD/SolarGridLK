@@ -76,6 +76,7 @@
             android:padding="20dp">
 
             <TextView
+                android:id="@+id/loginTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Sign in"
@@ -84,11 +85,55 @@
                 android:textColor="@color/text_primary" />
 
             <TextView
+                android:id="@+id/loginSubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:layout_marginBottom="20dp"
                 android:text="Enter your operator credentials to continue."
+                android:textSize="13sp"
+                android:textColor="@color/text_muted" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:layout_marginBottom="18dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/staffModeButton"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    android:background="@drawable/bg_button_amber"
+                    android:gravity="center"
+                    android:text="Staff"
+                    android:textStyle="bold"
+                    android:textColor="@color/bg_base"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <TextView
+                    android:id="@+id/prosumerModeButton"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button_outline"
+                    android:gravity="center"
+                    android:text="Prosumer"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_muted"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/identityLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Username"
                 android:textSize="13sp"
                 android:textColor="@color/text_muted" />
 
@@ -96,6 +141,7 @@
                 android:id="@+id/usernameInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
                 android:background="@drawable/bg_input"
                 android:padding="14dp"
                 android:hint="Username"
@@ -104,11 +150,49 @@
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_hint" />
 
+            <TextView
+                android:id="@+id/nicHelpText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Old NIC: 9 digits and V. New NIC: 12 digits."
+                android:textSize="12sp"
+                android:textColor="@color/text_hint"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Password"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_muted" />
+
+                <TextView
+                    android:id="@+id/showPasswordText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="4dp"
+                    android:text="Show"
+                    android:textSize="13sp"
+                    android:textColor="@color/accent_amber"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </LinearLayout>
+
             <EditText
                 android:id="@+id/passwordInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
                 android:background="@drawable/bg_input"
                 android:padding="14dp"
                 android:hint="Password"
@@ -118,6 +202,7 @@
                 android:textColorHint="@color/text_hint" />
 
             <LinearLayout
+                android:id="@+id/staffOptionsRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
@@ -163,6 +248,14 @@
                 android:textStyle="bold"
                 android:textColor="@color/bg_base" />
 
+            <ProgressBar
+                android:id="@+id/loginProgress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="12dp"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/errorText"
                 android:layout_width="match_parent"
@@ -175,6 +268,19 @@
                 android:background="@drawable/bg_error_banner"
                 android:padding="10dp"
                 android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/registerProsumerText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:minHeight="48dp"
+                android:text="Register as Prosumer"
+                android:textSize="14sp"
+                android:textColor="@color/accent_amber"
+                android:clickable="true"
+                android:focusable="true" />
 
         </LinearLayout>
     </LinearLayout>

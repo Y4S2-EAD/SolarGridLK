@@ -38,7 +38,9 @@ class ProsumerHomeActivity : AppCompatActivity() {
     private lateinit var adapter: ReservationAdapter
 
     private lateinit var welcomeText: TextView
+    private lateinit var accountNameText: TextView
     private lateinit var nicText: TextView
+    private lateinit var avatarInitialText: TextView
     private lateinit var activeCountText: TextView
     private lateinit var pendingCountText: TextView
     private lateinit var approvedCountText: TextView
@@ -47,7 +49,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
     private lateinit var errorText: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var reservationsRecyclerView: RecyclerView
-    private lateinit var logoutButton: Button
+    private lateinit var logoutButton: TextView
 
     private var allReservations: List<Reservation> = emptyList()
 
@@ -62,30 +64,43 @@ class ProsumerHomeActivity : AppCompatActivity() {
         sessionManager = SessionManager(this)
         reservationRepository = ReservationRepository(RetrofitClient.getReservationApi(this))
 
-        // TEMP: Test session fallback (remove before submission)
         if (!sessionManager.isLoggedIn()) {
-            sessionManager.saveSession(
-                token = "test",
-                username = "200012345678",
-                role = "Prosumer",
-                fullName = "Test Prosumer",
-                expiresAt = "2099-01-01"
-            )
+            openLogin()
+            return
         }
 
         initializeViews()
         setupRecyclerView()
         setupSearch()
         setupCreateButton()
+        setupProfileButton()
         setupLogout()
 
         loadDashboard()
     }
 
+    override fun onResume() {
+        // Refresh the header after a profile save. Reservation loading stays in onCreate.
+        super.onResume()
+        if (::welcomeText.isInitialized) {
+            bindAccountHeader()
+        }
+    }
+
+    private fun openLogin() {
+        // Send an unauthenticated visitor to login instead of creating a fake session.
+        val intent = Intent(this, LoginActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
+    }
+
     private fun initializeViews() {
         // Bind UI controls from activity_prosumer_home.xml
         welcomeText = findViewById(R.id.welcomeText)
+        accountNameText = findViewById(R.id.accountNameText)
         nicText = findViewById(R.id.nicText)
+        avatarInitialText = findViewById(R.id.avatarInitialText)
         activeCountText = findViewById(R.id.activeCountText)
         pendingCountText = findViewById(R.id.pendingCountText)
         approvedCountText = findViewById(R.id.approvedCountText)
@@ -96,9 +111,20 @@ class ProsumerHomeActivity : AppCompatActivity() {
         reservationsRecyclerView = findViewById(R.id.reservationsRecyclerView)
         logoutButton = findViewById(R.id.logoutButton)
 
-        val fullName = sessionManager.getFullName()
-        welcomeText.text = if (!fullName.isNullOrBlank()) "Welcome, $fullName" else "Prosumer Dashboard"
-        nicText.text = "NIC: ${sessionManager.getUsername() ?: "-"}"
+        bindAccountHeader()
+    }
+
+    private fun bindAccountHeader() {
+        // Fill the welcome header from the signed-in session, never from a hardcoded name.
+        val fullName = sessionManager.getFullName()?.trim().orEmpty()
+        val displayName = if (fullName.isNotEmpty()) fullName else "Prosumer"
+        val nic = sessionManager.getUsername()?.trim().orEmpty().ifEmpty { "—" }
+        val role = sessionManager.getRole()?.trim().orEmpty().ifEmpty { "Prosumer" }
+
+        welcomeText.text = "Welcome back, $displayName"
+        accountNameText.text = displayName
+        nicText.text = "$role • $nic"
+        avatarInitialText.text = displayName.first().uppercaseChar().toString()
     }
 
     private fun setupRecyclerView() {
@@ -131,6 +157,13 @@ class ProsumerHomeActivity : AppCompatActivity() {
         // Open microgrid node selection dialog on create tap
         createButton.setOnClickListener {
             showNodeSelectionDialog()
+        }
+    }
+
+    private fun setupProfileButton() {
+        // Open the signed-in prosumer profile without changing reservation actions.
+        findViewById<View>(R.id.profileButton).setOnClickListener {
+            startActivity(Intent(this, ProsumerProfileActivity::class.java))
         }
     }
 

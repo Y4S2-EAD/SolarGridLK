@@ -22,6 +22,30 @@ object RetrofitClient {
             .create(AuthApi::class.java)
     }
 
+    // Unauthenticated API for public prosumer registration.
+    val prosumerApi: ProsumerApi by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ProsumerApi::class.java)
+    }
+
+    // Authenticated prosumer profile calls. No body logging, so passwords are not written to logcat.
+    fun getAuthenticatedProsumerApi(context: Context): ProsumerApi {
+        val sessionManager = SessionManager(context.applicationContext)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor(sessionManager))
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ProsumerApi::class.java)
+    }
+
     // Factory method for authenticated ReservationApi
     fun getReservationApi(context: Context): ReservationApi {
         val sessionManager = SessionManager(context.applicationContext)

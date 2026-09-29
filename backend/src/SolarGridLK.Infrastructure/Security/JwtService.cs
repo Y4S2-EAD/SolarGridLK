@@ -18,7 +18,7 @@ public class JwtService : IJwtService
 
     public string GenerateToken(User user)
     {
-        // Create the claims that identify the authenticated user.
+        // Create the claims that identify the authenticated staff user.
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id),
@@ -28,6 +28,28 @@ public class JwtService : IJwtService
             new("fullName", user.FullName)
         };
 
+        return CreateToken(claims);
+    }
+
+    public string GenerateProsumerToken(Prosumer prosumer)
+    {
+        // Create Prosumer claims without using the staff UserRole enum.
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, prosumer.Id),
+            new(JwtRegisteredClaimNames.UniqueName, prosumer.Nic),
+            new(ClaimTypes.Name, prosumer.Nic),
+            new(ClaimTypes.Role, "Prosumer"),
+            new("fullName", prosumer.FullName),
+            new("nic", prosumer.Nic)
+        };
+
+        return CreateToken(claims);
+    }
+
+    private string CreateToken(IEnumerable<Claim> claims)
+    {
+        // Sign a JWT with the shared issuer, audience, key, and lifetime.
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_jwtSettings.Key));
 
