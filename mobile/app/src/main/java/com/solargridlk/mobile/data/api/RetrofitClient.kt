@@ -66,4 +66,19 @@ object RetrofitClient {
             .build()
             .create(ReservationApi::class.java)
     }
+
+    // Authenticated Grid Operator node reads and battery-slot updates.
+    fun getOperatorNodeApi(context: Context): OperatorNodeApi {
+        val sessionManager = SessionManager(context.applicationContext)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor(sessionManager))
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(OperatorNodeApi::class.java)
+    }
 }

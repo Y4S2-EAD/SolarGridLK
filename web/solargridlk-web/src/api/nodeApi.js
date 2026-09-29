@@ -73,3 +73,29 @@ export const updateNode = async (nodeId, nodeData) => {
 
     return response.data;
 };
+
+export const updateBatterySlots = async (nodeId, availableBatterySlots) => {
+    // Update only battery-slot availability.
+    const response = await apiClient.put(
+        `/nodes/${encodeURIComponent(nodeId)}/battery-slots`,
+        { availableBatterySlots }
+    );
+
+    return response.data;
+};
+
+export const batterySlotErrorText = (message, status) => {
+    if (status === 401) {
+        return "Your session has expired. Please log in again.";
+    }
+
+    if (status === 403) {
+        return "You do not have permission to update battery slots.";
+    }
+
+    if (status === 404) {
+        return message || "Node not found.";
+    }
+
+    return message || "Unable to update battery slot availability.";
+};

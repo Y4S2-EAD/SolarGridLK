@@ -25,4 +25,9 @@ public interface IMicrogridNodeService
 
     // Deactivate a node when it has no active reservations.
     Task<MicrogridNodeDto?> DeactivateAsync(string nodeId);
+
+    // Update only the available battery slot count of an active node.
+    Task<MicrogridNodeDto?> UpdateBatterySlotsAsync(
+        string nodeId,
+        UpdateBatterySlotsDto request);
 }

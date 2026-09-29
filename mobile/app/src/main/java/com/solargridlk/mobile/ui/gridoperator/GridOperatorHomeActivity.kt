@@ -33,6 +33,10 @@ class GridOperatorHomeActivity : AppCompatActivity() {
         findViewById<Button>(R.id.nearbyNodesButton).setOnClickListener {
             startActivity(Intent(this, NodesMapActivity::class.java))
         }
+
+        findViewById<Button>(R.id.microgridNodesButton).setOnClickListener {
+            startActivity(Intent(this, NodeOperationsActivity::class.java))
+        }
     }
 
     private fun initializeViews() {

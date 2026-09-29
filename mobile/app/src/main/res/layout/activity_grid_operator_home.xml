@@ -509,6 +509,17 @@
             android:textSize="13sp" />
 
         <Button
+            android:id="@+id/microgridNodesButton"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_button_outline_cyan"
+            android:text="Microgrid nodes"
+            android:textAllCaps="false"
+            android:textColor="@color/accent_cyan"
+            android:textSize="13sp" />
+
+        <Button
             android:id="@+id/nearbyNodesButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

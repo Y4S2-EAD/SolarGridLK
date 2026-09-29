@@ -1,4 +1,4 @@
-/*Description: Implements microgrid node creation, updates, schedules, and deactivation.*/
+/*Description: Implements microgrid node creation, updates, schedules, deactivation, and battery-slot availability.*/
 
 using System.Globalization;
 using SolarGridLK.Application.DTOs;
@@ -210,6 +210,41 @@ public class MicrogridNodeService : IMicrogridNodeService
         }
 
         node.Status = NodeStatus.Deactivated;
+        node.LastModifiedAt = DateTime.UtcNow;
+
+        await _nodeRepository.UpdateAsync(node);
+
+        return MapToDto(node);
+    }
+
+    public async Task<MicrogridNodeDto?> UpdateBatterySlotsAsync(
+        string nodeId,
+        UpdateBatterySlotsDto request)
+    {
+        // Change only available battery slots. Identity, location, capacity, and schedule stay as stored.
+        if (request == null || !request.AvailableBatterySlots.HasValue)
+        {
+            throw new InvalidOperationException(
+                "Available battery slots are required.");
+        }
+
+        ValidateBatterySlots(request.AvailableBatterySlots.Value);
+
+        var node = await _nodeRepository.GetByNodeIdAsync(
+            NormalizeNodeId(nodeId));
+
+        if (node == null)
+        {
+            return null;
+        }
+
+        if (node.Status == NodeStatus.Deactivated)
+        {
+            throw new InvalidOperationException(
+                "Cannot update a deactivated node.");
+        }
+
+        node.AvailableBatterySlots = request.AvailableBatterySlots.Value;
         node.LastModifiedAt = DateTime.UtcNow;
 
         await _nodeRepository.UpdateAsync(node);
