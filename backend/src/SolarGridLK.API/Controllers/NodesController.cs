@@ -1,4 +1,4 @@
-/* Description: Exposes microgrid node creation, listing, updates, schedule changes, and deactivation.*/
+/* Description: Exposes microgrid node creation, listing, updates, schedule changes, deactivation, and battery-slot availability.*/
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +21,7 @@ public class NodesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "BackofficeOnly")]
     public async Task<IActionResult> Create(
         [FromBody] CreateMicrogridNodeDto request)
     {
@@ -89,6 +90,7 @@ public class NodesController : ControllerBase
     }
 
     [HttpPut("{nodeId}")]
+    [Authorize(Policy = "BackofficeOnly")]
     public async Task<IActionResult> Update(
         string nodeId,
         [FromBody] UpdateMicrogridNodeDto request)
@@ -122,6 +124,7 @@ public class NodesController : ControllerBase
     }
 
     [HttpPut("{nodeId}/schedule")]
+    [Authorize(Policy = "BackofficeOnly")]
     public async Task<IActionResult> UpdateSchedule(
         string nodeId,
         [FromBody] UpdateNodeScheduleDto request)
@@ -155,6 +158,7 @@ public class NodesController : ControllerBase
     }
 
     [HttpPost("{nodeId}/deactivate")]
+    [Authorize(Policy = "BackofficeOnly")]
     public async Task<IActionResult> Deactivate(string nodeId)
     {
         // Deactivate a node when no active reservations exist for it.
@@ -174,6 +178,39 @@ public class NodesController : ControllerBase
             return Ok(ApiResponse<MicrogridNodeDto>.Ok(
                 node,
                 "Node deactivated successfully."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
+    }
+
+    [HttpPut("{nodeId}/battery-slots")]
+    public async Task<IActionResult> UpdateBatterySlots(
+        string nodeId,
+        [FromBody] UpdateBatterySlotsDto request)
+    {
+        // Update battery-slot availability without changing node identity, location, capacity, or schedule.
+        try
+        {
+            var node = await _nodeService.UpdateBatterySlotsAsync(nodeId, request);
+
+            if (node == null)
+            {
+                return NotFound(new
+                {
+                    success = false,
+                    message = "Node not found."
+                });
+            }
+
+            return Ok(ApiResponse<MicrogridNodeDto>.Ok(
+                node,
+                "Battery slot availability updated successfully."));
         }
         catch (InvalidOperationException ex)
         {

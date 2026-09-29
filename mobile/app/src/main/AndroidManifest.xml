@@ -24,6 +24,14 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
         <activity android:name=".ui.gridoperator.NodesMapActivity" android:exported="false" />
+        <activity
+            android:name=".ui.gridoperator.NodeOperationsActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.gridoperator.NodeOperationDetailsActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
         <activity android:name=".ui.prosumer.QrDisplayActivity" android:exported="false" />
         <activity
             android:name=".ui.gridoperator.QrScanActivity"

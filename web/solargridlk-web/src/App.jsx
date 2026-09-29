@@ -22,6 +22,8 @@ import BackofficeLayout from "./components/BackofficeLayout";
 import GridOperatorLayout from "./components/GridOperatorLayout";
 import VerifyTransferPage from "./pages/VerifyTransferPage";
 import TransfersMonitorPage from "./pages/TransfersMonitorPage";
+import NodeOperationsPage from "./pages/NodeOperationsPage";
+import NodeOperationDetailsPage from "./pages/NodeOperationDetailsPage";
 
 const App = () => {
     return (
@@ -102,6 +104,8 @@ const App = () => {
                         }
                     >
                         <Route index element={<TransfersMonitorPage />} />
+                        <Route path="nodes" element={<NodeOperationsPage />} />
+                        <Route path="nodes/:nodeId" element={<NodeOperationDetailsPage />} />
                         <Route path="verify" element={<VerifyTransferPage />} />
 
                         <Route
