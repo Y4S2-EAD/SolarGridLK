@@ -1,5 +1,6 @@
 package com.solargridlk.mobile.ui.gridoperator
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
@@ -30,6 +31,7 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var map: GoogleMap
     private lateinit var areaSpinner: Spinner
     private var allNodes: List<Node> = emptyList()
+    private var isPickerMode: Boolean = false
 
     private val sampleNodes = listOf(
         Node("NODE-001", "Colombo Fort Hub", 6.9344, 79.8428, "Active", 25.0, "Colombo"),
@@ -43,6 +45,8 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_nodes_map)
 
+        isPickerMode = intent.getBooleanExtra("IS_PICKER_MODE", false)
+
         findViewById<ImageButton>(R.id.backButton).setOnClickListener { finish() }
         areaSpinner = findViewById(R.id.areaSpinner)
 
@@ -55,6 +59,29 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         map = googleMap
         map.uiSettings.isZoomControlsEnabled = true
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(7.8731, 80.7718), 7f))
+
+        map.setOnMarkerClickListener { marker ->
+            val selectedNode = allNodes.find { (it.name ?: it.id ?: "") == marker.title || it.id == marker.title }
+
+            if (isPickerMode && selectedNode != null) {
+                val isActive = selectedNode.status?.equals("Active", ignoreCase = true) == true
+                if (!isActive) {
+                    Toast.makeText(this, "This node is currently offline. Please select an active node.", Toast.LENGTH_SHORT).show()
+                    return@setOnMarkerClickListener true
+                }
+
+                val resultIntent = Intent().apply {
+                    putExtra("SELECTED_NODE_ID", selectedNode.id)
+                    putExtra("SELECTED_NODE_NAME", selectedNode.name ?: selectedNode.id)
+                }
+                setResult(RESULT_OK, resultIntent)
+                finish()
+                true
+            } else {
+                false
+            }
+        }
+
         loadNodes()
     }
 

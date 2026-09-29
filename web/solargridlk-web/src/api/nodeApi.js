@@ -7,6 +7,26 @@ export const getNodes = async () => {
     return response.data;
 };
 
+export const batterySlotErrorText = (message, status) => {
+    if (status === 401) {
+        return "Your session has expired. Please log in again.";
+    }
+
+    if (status === 403) {
+        return "You do not have permission to modify battery slots.";
+    }
+
+    if (status === 404) {
+        return message || "Node or slot not found.";
+    }
+
+    if (message && message.toLowerCase().includes("not available")) {
+        return "Battery slot not available.";
+    }
+
+    return message || "Unable to modify battery slot.";
+};
+
 export const getNodeById = async (nodeId) => {
     // Retrieve one microgrid node by its public id.
     const response = await apiClient.get(
@@ -69,6 +89,16 @@ export const updateNode = async (nodeId, nodeData) => {
     const response = await apiClient.put(
         `/nodes/${encodeURIComponent(nodeId)}`,
         nodeData
+    );
+
+    return response.data;
+};
+
+export const updateBatterySlots = async (nodeId, availableSlots) => {
+    // Update only the battery slot availability for a node.
+    const response = await apiClient.put(
+        `/nodes/${encodeURIComponent(nodeId)}/battery-slots`,
+        { availableBatterySlots: availableSlots }
     );
 
     return response.data;

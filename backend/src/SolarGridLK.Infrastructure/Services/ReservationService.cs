@@ -15,12 +15,10 @@ namespace SolarGridLK.Infrastructure.Services;
 public class ReservationService : IReservationService
 {
     private readonly IReservationRepository _reservationRepository;
-    private readonly IMicrogridNodeRepository _nodeRepository;
 
-    public ReservationService(IReservationRepository reservationRepository, IMicrogridNodeService nodeService)
+    public ReservationService(IReservationRepository reservationRepository)
     {
         _reservationRepository = reservationRepository;
-        _nodeService = nodeService;
     }
     public async Task<ReservationDto> CreateReservationAsync(CreateReservationDto request)
     {
@@ -33,44 +31,6 @@ public class ReservationService : IReservationService
         if (request.SlotDateTime > DateTime.UtcNow.AddDays(7))
         {
             throw new InvalidOperationException("Reservations can only be made within the next 7 days.");
-        }
-        //Reject a missing prosumer NIC
-        if(string.IsNullOrWhiteSpace(request.ProsumerNic))
-        {
-            throw new InvalidOperationException("Prosumer NIC is required.");
-        }
-        // Validate the requested node exists and is active
-        if (string.IsNullOrWhiteSpace(request.NodeId))
-        {
-            throw new InvalidOperationException("Node ID is required.");
-        }
-
-        var nodeId = request.NodeId.Trim();
-
-        var node = await _nodeRepository.GetByNodeIdAsync(nodeId);
-
-        if (node == null)
-        {
-            throw new InvalidOperationException("Node not found.");
-        }
-
-        if (node.Status == NodeStatus.Deactivated)
-        {
-            throw new InvalidOperationException("Node is not active.");
-        }
-
-        // Reject a missing node id.
-        if (string.IsNullOrWhiteSpace(request.NodeId))
-        {
-            throw new InvalidOperationException("Node ID is required.");
-        }
-
-        // The requested time must exactly match one of this node's generated, available slots.
-        var slots = await _nodeService.GetAvailableSlotsAsync(request.NodeId.Trim(), request.SlotDateTime.Date);
-        var match = slots.FirstOrDefault(s => s.Start == request.SlotDateTime);
-        if (match == null || !match.IsAvailable)
-        {
-            throw new InvalidOperationException("Slot not available.");
         }
 
         var reservation = new Reservation
@@ -162,14 +122,6 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException("Reservations can only be made within the next 7 days.");
         }
 
-        // The new requested time must exactly match one of this node's generated, available slots.
-        var slots = await _nodeService.GetAvailableSlotsAsync(reservation.NodeId, request.SlotDateTime.Date);
-        var match = slots.FirstOrDefault(s => s.Start == request.SlotDateTime);
-        if (match == null || !match.IsAvailable)
-        {
-            throw new InvalidOperationException("Slot not available.");
-        }
-
         reservation.SlotDateTime = request.SlotDateTime;
         reservation.LastModifiedAt = DateTime.UtcNow;
         await _reservationRepository.UpdateAsync(reservation);
@@ -210,12 +162,6 @@ public class ReservationService : IReservationService
         if (reservation.Status != ReservationStatus.Pending)
         {
             throw new InvalidOperationException("Only a pending reservation can be approved.");
-        }
-
-        // Reject approving a reservation whose slot time has already passed
-        if (reservation.SlotDateTime < DateTime.UtcNow)
-        {
-            throw new InvalidOperationException("Cannot approve a reservation whose slot time has already passed.");
         }
 
         reservation.Status = ReservationStatus.Approved;
