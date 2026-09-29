@@ -25,4 +25,6 @@ public class Prosumer
     public ProsumerStatus Status { get; set; } = ProsumerStatus.Active;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime? LastModifiedAt { get; set; }
 }

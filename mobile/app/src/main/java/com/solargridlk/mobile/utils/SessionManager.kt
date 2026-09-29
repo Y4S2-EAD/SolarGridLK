@@ -47,6 +47,13 @@ class SessionManager(context: Context) {
         return preferences.getString("fullName", null)
     }
 
+    fun updateFullName(fullName: String) {
+        // Keep the signed-in display name in step with a profile save.
+        preferences.edit()
+            .putString("fullName", fullName)
+            .apply()
+    }
+
     fun getExpiresAt(): String? {
         // Return the stored token expiration time.
         return preferences.getString("expiresAt", null)

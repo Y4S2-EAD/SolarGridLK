@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
 using SolarGridLK.Domain.Entities;
@@ -7,6 +8,14 @@ namespace SolarGridLK.Infrastructure.Services;
 
 public class ProsumerService : IProsumerService
 {
+    private static readonly Regex EmailPattern = new(
+        @"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex PhonePattern = new(
+        @"^0\d{9}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private readonly IProsumerRepository _prosumerRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
@@ -121,6 +130,13 @@ public class ProsumerService : IProsumerService
         UpdateProsumerDto request)
     {
         // Update permitted profile fields and leave the NIC unchanged.
+        if (request == null)
+        {
+            throw new InvalidOperationException("Profile update is required.");
+        }
+
+        ValidateProfileFields(request.FullName, request.Email, request.PhoneNumber);
+
         var prosumer = await _prosumerRepository.GetByNicAsync(
             NormalizeNic(nic));
 
@@ -161,6 +177,8 @@ public class ProsumerService : IProsumerService
             prosumer.Address = request.Address.Trim();
         }
 
+        prosumer.LastModifiedAt = DateTime.UtcNow;
+
         await _prosumerRepository.UpdateAsync(prosumer);
 
         return MapToDto(prosumer);
@@ -200,6 +218,7 @@ public class ProsumerService : IProsumerService
         }
 
         prosumer.Status = ProsumerStatus.Deactivated;
+        prosumer.LastModifiedAt = DateTime.UtcNow;
 
         await _prosumerRepository.UpdateAsync(prosumer);
 
@@ -224,6 +243,7 @@ public class ProsumerService : IProsumerService
         }
 
         prosumer.Status = ProsumerStatus.Active;
+        prosumer.LastModifiedAt = DateTime.UtcNow;
 
         await _prosumerRepository.UpdateAsync(prosumer);
 
@@ -252,7 +272,34 @@ public class ProsumerService : IProsumerService
             PhoneNumber = prosumer.PhoneNumber,
             Address = prosumer.Address,
             Status = prosumer.Status.ToString(),
-            CreatedAt = prosumer.CreatedAt
+            CreatedAt = prosumer.CreatedAt,
+            LastModifiedAt = prosumer.LastModifiedAt
         };
+    }
+
+    private static void ValidateProfileFields(
+        string? fullName,
+        string? email,
+        string? phoneNumber)
+    {
+        // Apply the same profile rules the web form uses. Blank optional fields stay blank.
+        if (fullName != null && string.IsNullOrWhiteSpace(fullName))
+        {
+            throw new InvalidOperationException("Full name is required.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(email) &&
+            !EmailPattern.IsMatch(email.Trim()))
+        {
+            throw new InvalidOperationException(
+                "Enter a valid email address, such as name@gmail.com.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(phoneNumber) &&
+            !PhonePattern.IsMatch(phoneNumber.Trim()))
+        {
+            throw new InvalidOperationException(
+                "Enter a 10-digit mobile number starting with 0.");
+        }
     }
 }

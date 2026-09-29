@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SolarGridLK.Application.DTOs;
@@ -44,10 +45,16 @@ public class ProsumersController : ControllerBase
     }
 
     [HttpGet("{nic}")]
-    [Authorize(Policy = "BackofficeOnly")]
+    [Authorize]
     public async Task<IActionResult> GetProsumer(string nic)
     {
-        // Return one prosumer profile to an authorized Backoffice user.
+        // Return a profile to Backoffice, or to the Prosumer who owns this NIC.
+        var denied = DenyUnlessBackofficeOrOwner(nic);
+        if (denied != null)
+        {
+            return denied;
+        }
+
         try
         {
             var prosumer = await _prosumerService.GetByNicAsync(nic);
@@ -76,12 +83,18 @@ public class ProsumersController : ControllerBase
     }
 
     [HttpPut("{nic}")]
-    [Authorize(Policy = "BackofficeOnly")]
+    [Authorize]
     public async Task<IActionResult> UpdateProsumer(
         string nic,
         [FromBody] UpdateProsumerDto request)
     {
         // Update permitted profile fields. The route NIC is never replaced.
+        var denied = DenyUnlessBackofficeOrOwner(nic);
+        if (denied != null)
+        {
+            return denied;
+        }
+
         try
         {
             var prosumer = await _prosumerService.UpdateAsync(nic, request);
@@ -110,11 +123,18 @@ public class ProsumersController : ControllerBase
     }
 
     [HttpPost("{nic}/deactivation-request")]
+    [Authorize]
     public async Task<IActionResult> RequestDeactivation(
         string nic,
         [FromBody] ProsumerDeactivationRequestDto request)
     {
         // Accept a deactivation request after the current password is confirmed.
+        var denied = DenyUnlessBackofficeOrOwner(nic);
+        if (denied != null)
+        {
+            return denied;
+        }
+
         try
         {
             var prosumer = await _prosumerService
@@ -173,5 +193,50 @@ public class ProsumersController : ControllerBase
                 message = ex.Message
             });
         }
+    }
+
+    private IActionResult? DenyUnlessBackofficeOrOwner(string nic)
+    {
+        // Backoffice may use any NIC. A Prosumer may use only the NIC in the JWT.
+        if (User.IsInRole("Backoffice"))
+        {
+            return null;
+        }
+
+        if (User.IsInRole("Prosumer"))
+        {
+            var callerNic = GetAuthenticatedNic();
+            var routeNic = nic?.Trim().ToUpperInvariant();
+
+            if (!string.IsNullOrWhiteSpace(callerNic) &&
+                string.Equals(callerNic, routeNic, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                success = false,
+                message = "You can only access your own prosumer account."
+            });
+        }
+
+        return StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            success = false,
+            message = "You are not allowed to access this prosumer account."
+        });
+    }
+
+    private string? GetAuthenticatedNic()
+    {
+        // Read the Prosumer NIC from the existing JWT claims.
+        var nic = User.FindFirst("nic")?.Value
+            ?? User.FindFirst(ClaimTypes.Name)?.Value
+            ?? User.Identity?.Name;
+
+        return string.IsNullOrWhiteSpace(nic)
+            ? null
+            : nic.Trim().ToUpperInvariant();
     }
 }

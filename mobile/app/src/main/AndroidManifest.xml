@@ -47,6 +47,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".ui.prosumer.ProsumerProfileActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.prosumer.ProsumerHomeActivity"
             android:exported="false" />
 

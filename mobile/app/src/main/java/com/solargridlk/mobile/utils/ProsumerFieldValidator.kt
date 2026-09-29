@@ -55,4 +55,45 @@ object ProsumerFieldValidator {
 
         return null
     }
+
+    fun profileError(
+        fullName: String,
+        email: String,
+        phoneNumber: String
+    ): String? {
+        // Match the web profile rules. Email and phone may be left blank.
+        if (fullName.isEmpty()) {
+            return "Full name is required."
+        }
+
+        if (email.isNotEmpty() && !emailPattern.matches(email)) {
+            return "Enter a valid email address, such as name@gmail.com."
+        }
+
+        if (phoneNumber.isNotEmpty() && !sriLankanMobilePattern.matches(phoneNumber)) {
+            return "Enter a 10-digit mobile number starting with 0."
+        }
+
+        return null
+    }
+
+    fun passwordChangeError(
+        newPassword: String,
+        confirmPassword: String
+    ): String? {
+        // Registration only requires a non-empty password, plus a matching confirmation.
+        if (newPassword.isEmpty()) {
+            return "Password is required."
+        }
+
+        if (confirmPassword.isEmpty()) {
+            return "Please confirm your password."
+        }
+
+        if (newPassword != confirmPassword) {
+            return "Passwords do not match."
+        }
+
+        return null
+    }
 }

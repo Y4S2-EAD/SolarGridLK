@@ -18,5 +18,6 @@ data class ProsumerData(
     val phoneNumber: String? = null,
     val address: String? = null,
     val status: String? = null,
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    val lastModifiedAt: String? = null
 )
