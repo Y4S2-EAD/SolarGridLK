@@ -1,12 +1,14 @@
 package com.solargridlk.mobile.data.model
+import com.google.gson.annotations.SerializedName
 
 data class Node(
-    val id: String?,
+    @SerializedName("nodeId") val id: String?,
     val name: String?,
     val latitude: Double?,
     val longitude: Double?,
-    val status: String?,       // Active/ Offline etc.
-    val capacityKw: Double?     // optional
+    val status: String?,
+    val capacityKw: Double?,
+    val location: String?
 )
 
 data class NodesResponse(
