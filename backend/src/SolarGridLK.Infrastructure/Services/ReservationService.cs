@@ -15,10 +15,12 @@ namespace SolarGridLK.Infrastructure.Services;
 public class ReservationService : IReservationService
 {
     private readonly IReservationRepository _reservationRepository;
+    private readonly IMicrogridNodeRepository _nodeRepository;
 
-    public ReservationService(IReservationRepository reservationRepository)
+    public ReservationService(IReservationRepository reservationRepository, IMicrogridNodeRepository nodeRepository)
     {
         _reservationRepository = reservationRepository;
+        _nodeRepository = nodeRepository;
     }
     public async Task<ReservationDto> CreateReservationAsync(CreateReservationDto request)
     {
@@ -32,11 +34,35 @@ public class ReservationService : IReservationService
         {
             throw new InvalidOperationException("Reservations can only be made within the next 7 days.");
         }
+        //Reject a missing prosumer NIC
+        if(string.IsNullOrWhiteSpace(request.ProsumerNic))
+        {
+            throw new InvalidOperationException("Prosumer NIC is required.");
+        }
+        // Validate the requested node exists and is active
+        if (string.IsNullOrWhiteSpace(request.NodeId))
+        {
+            throw new InvalidOperationException("Node ID is required.");
+        }
+
+        var nodeId = request.NodeId.Trim();
+
+        var node = await _nodeRepository.GetByNodeIdAsync(nodeId);
+
+        if (node == null)
+        {
+            throw new InvalidOperationException("Node not found.");
+        }
+
+        if (node.Status == NodeStatus.Deactivated)
+        {
+            throw new InvalidOperationException("Node is not active.");
+        }
 
         var reservation = new Reservation
         {
             ProsumerNic = request.ProsumerNic,
-            NodeId = request.NodeId,
+            NodeId = node.NodeId,
             SlotDateTime = request.SlotDateTime,
             Status = ReservationStatus.Pending,
             CreatedAt = DateTime.UtcNow,
@@ -162,6 +188,12 @@ public class ReservationService : IReservationService
         if (reservation.Status != ReservationStatus.Pending)
         {
             throw new InvalidOperationException("Only a pending reservation can be approved.");
+        }
+
+        // Reject approving a reservation whose slot time has already passed
+        if (reservation.SlotDateTime < DateTime.UtcNow)
+        {
+            throw new InvalidOperationException("Cannot approve a reservation whose slot time has already passed.");
         }
 
         reservation.Status = ReservationStatus.Approved;
