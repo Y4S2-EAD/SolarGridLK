@@ -10,5 +10,6 @@ data class NodeEntity(
     val latitude: Double?,
     val longitude: Double?,
     val status: String?,
-    val capacityKw: Double?
+    val capacityKw: Double?,
+    val location: String?
 )
