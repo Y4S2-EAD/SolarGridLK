@@ -1,3 +1,10 @@
+/*
+ * File: ProsumerHomeActivity.kt
+ * Project: SolarGridLK.Mobile
+ * Description: Prosumer home screen: dashboard counts, pending reservations, and the create / modify / cancel / QR reservation flows.
+ * Author: Nipuni Bandara
+ */
+
 package com.solargridlk.mobile.ui.prosumer
 
 import android.app.DatePickerDialog
@@ -59,9 +66,6 @@ class ProsumerHomeActivity : AppCompatActivity() {
     private lateinit var yourBookingsButton: View
 
     private var allReservations: List<Reservation> = emptyList()
-
-    // Fallback static nodes
-    private val fallbackNodes = arrayOf("NODE-001", "TESTNODE01", "TESTNODE02")
 
     // Single action guard to prevent double-tap creates
     private var isReserving = false
@@ -268,7 +272,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
     }
 
     private fun showNodeSelectionListForModify(reservation: Reservation) {
-        // Fetch live nodes list for modification node change
+        // Fetch the live nodes list so the prosumer can move the reservation to another node
         lifecycleScope.launch {
             val liveNodes = try {
                 val res = NodeApiClient.create(this@ProsumerHomeActivity).getNodes()
@@ -279,17 +283,13 @@ class ProsumerHomeActivity : AppCompatActivity() {
                 null
             }
 
-            val displayList = if (!liveNodes.isNullOrEmpty()) {
-                liveNodes.map { "${it.name ?: it.id} (${it.id})" }.toTypedArray()
-            } else {
-                fallbackNodes
+            if (liveNodes.isNullOrEmpty()) {
+                showError("Could not load microgrid nodes. Please check your connection and try again.")
+                return@launch
             }
 
-            val idList = if (!liveNodes.isNullOrEmpty()) {
-                liveNodes.map { it.id!! }.toTypedArray()
-            } else {
-                fallbackNodes
-            }
+            val displayList = liveNodes.map { "${it.name ?: it.id} (${it.id})" }.toTypedArray()
+            val idList = liveNodes.map { it.id!! }.toTypedArray()
 
             AlertDialog.Builder(this@ProsumerHomeActivity)
                 .setTitle("Select New Microgrid Node")
@@ -332,7 +332,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
     }
 
     private fun showNodeSelectionListDialog() {
-        // Fetch live microgrid nodes from API or fallback to static list
+        // Fetch live microgrid nodes from the API and let the prosumer pick one
         lifecycleScope.launch {
             val liveNodes = try {
                 val res = NodeApiClient.create(this@ProsumerHomeActivity).getNodes()
@@ -343,17 +343,13 @@ class ProsumerHomeActivity : AppCompatActivity() {
                 null
             }
 
-            val displayList = if (!liveNodes.isNullOrEmpty()) {
-                liveNodes.map { "${it.name ?: it.id} (${it.id})" }.toTypedArray()
-            } else {
-                fallbackNodes
+            if (liveNodes.isNullOrEmpty()) {
+                showError("Could not load microgrid nodes. Please check your connection and try again.")
+                return@launch
             }
 
-            val idList = if (!liveNodes.isNullOrEmpty()) {
-                liveNodes.map { it.id!! }.toTypedArray()
-            } else {
-                fallbackNodes
-            }
+            val displayList = liveNodes.map { "${it.name ?: it.id} (${it.id})" }.toTypedArray()
+            val idList = liveNodes.map { it.id!! }.toTypedArray()
 
             AlertDialog.Builder(this@ProsumerHomeActivity)
                 .setTitle("Select Microgrid Node")
@@ -420,8 +416,8 @@ class ProsumerHomeActivity : AppCompatActivity() {
             startUtc
         }
 
-        val capacityInfo = if (slot.availableCount != null && slot.capacity != null) {
-            " [${slot.availableCount}/${slot.capacity}]"
+        val capacityInfo = if (slot.reservedCount != null && slot.capacity != null) {
+            " [${slot.reservedCount}/${slot.capacity} booked]"
         } else ""
 
         val isAvailable = slot.isAvailable == true && (slot.availableCount == null || slot.availableCount > 0)
@@ -571,7 +567,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
                     val rawError = response.errorBody()?.string()
                     when (response.code()) {
                         409 -> {
-                            showError("Slot full. Refreshing availability...")
+                            showError("That slot just filled up. Please pick another slot.")
                             loadDashboard()
                         }
                         412 -> {
@@ -621,7 +617,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
                     val rawError = response.errorBody()?.string()
                     when (response.code()) {
                         409 -> {
-                            showError("Slot full. Refreshing availability...")
+                            showError("That slot just filled up. Please pick another slot.")
                             loadDashboard()
                         }
                         412 -> {
@@ -760,7 +756,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
             return "Session expired. Please log in again."
         }
         if (responseCode == 409) {
-            return "Slot full. Refreshing availability..."
+            return "That slot just filled up. Please pick another slot."
         }
         if (responseCode == 412) {
             val extracted = extractJsonMessage(rawJson)
@@ -778,6 +774,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
     }
 
     private fun extractJsonMessage(rawJson: String?): String {
+        // Read the "message" field from a JSON error body, or return a short raw body
         if (rawJson.isNullOrBlank()) return ""
         return try {
             val json = JSONObject(rawJson)

@@ -16,7 +16,6 @@ public class ReservationService : IReservationService
 {
     private readonly IReservationRepository _reservationRepository;
     private readonly IMicrogridNodeService _nodeService;
-    private readonly global::MongoDB.Driver.IMongoClient _mongoClient;
     private readonly SolarGridLK.Infrastructure.Repositories.SlotCounterRepository _slotCounterRepository;
     private readonly SolarGridLK.Infrastructure.Transactions.IMongoTransactionRunner _transactionRunner;
 
@@ -24,28 +23,27 @@ public class ReservationService : IReservationService
     {
         _reservationRepository = reservationRepository;
         _nodeService = nodeService;
-        _mongoClient = mongoClient;
         _slotCounterRepository = slotCounterRepository;
         _transactionRunner = transactionRunner;
     }
     public async Task<ReservationDto> CreateReservationAsync(CreateReservationDto request)
     {
-        //Reject a slot that has already passed
+        // Reject a slot that has already passed
         if (request.SlotDateTime < DateTime.UtcNow)
         {
             throw new InvalidOperationException("Cannot reserve a slot in the past.");
         }
-        //Reject a slot more than 7 days into the future
+        // Reject a slot more than 7 days into the future
         if (request.SlotDateTime > DateTime.UtcNow.AddDays(7))
         {
             throw new InvalidOperationException("Reservations can only be made within the next 7 days.");
         }
-        //Reject a missing node id
+        // Reject a missing node id
         if (string.IsNullOrWhiteSpace(request.NodeId))
         {
             throw new InvalidOperationException("Node ID is required.");
         }
-        //The requested time must exactly match one of this node's generated, available slots
+        // The requested time must exactly match one of this node's generated slots
         var slots = await _nodeService.GetAvailableSlotsAsync(request.NodeId.Trim(), request.SlotDateTime.Date);
         var match = slots.FirstOrDefault(s => Math.Abs((s.Start - request.SlotDateTime).TotalMinutes) < 1);
         if (match == null)
@@ -54,13 +52,11 @@ public class ReservationService : IReservationService
         }
         if (!match.IsAvailable)
         {
-            // Return a more specific error when the slot is already reserved
-            throw new InvalidOperationException(match.ReservationStatus == "Pending" || match.ReservationStatus == "Approved"
-                ? "Slot already reserved." : "Slot not available.");
+            // Reject a slot that is already at capacity
+            throw new InvalidOperationException("Slot capacity reached.");
         }
 
-        // Use a MongoDB transaction to atomically insert the reservation and protect against overbooking.
-        // Fetch node capacity first (node record is read-only for capacity checks)
+        // Fetch the node to read its battery slot capacity
         var node = await _nodeService.GetByNodeIdAsync(request.NodeId.Trim());
         if (node == null)
         {
@@ -70,25 +66,22 @@ public class ReservationService : IReservationService
         Reservation reservation = null!;
         await _transactionRunner.RunInTransactionAsync<bool>(async s =>
         {
-            // Double-check capacity inside the transaction using session-aware count (use infrastructure repo interface)
-            var infraRepo = (SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository)_reservationRepository;
-            var reservedCount = await infraRepo.CountReservationsForSlotAsync(s, request.NodeId.Trim(), request.SlotDateTime);
-            if (reservedCount >= node.AvailableBatterySlots)
-            {
-                throw new InvalidOperationException("Slot capacity reached.");
-            }
+            // Atomically claim one unit of this slot's capacity inside the transaction
+            var claimed = await _slotCounterRepository.TryReserveAsync(s, request.NodeId.Trim(), match.Start, node.AvailableBatterySlots);
+            if (!claimed) throw new InvalidOperationException("Slot capacity reached.");
 
             reservation = new Reservation
             {
                 ProsumerNic = request.ProsumerNic,
                 NodeId = request.NodeId.Trim(),
-                SlotDateTime = request.SlotDateTime,
+                SlotDateTime = match.Start,
                 Status = ReservationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
                 LastModifiedAt = DateTime.UtcNow
             };
 
-            // Insert the reservation using the session via infrastructure repo
+            // Insert the reservation using the same session
+            var infraRepo = (SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository)_reservationRepository;
             await infraRepo.CreateAsync(s, reservation);
 
             return true;
@@ -168,7 +161,7 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException("Cannot modify a completed or cancelled reservation.");
         }
 
-        //Reject an updation if the slot is less than 12 hours away
+        // Reject an update if the existing slot is less than 12 hours away
         if (reservation.SlotDateTime - DateTime.UtcNow < TimeSpan.FromHours(12))
         {
             throw new InvalidOperationException("Update require at least 12 hours notice.");
@@ -186,13 +179,13 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException("Reservations can only be made within the next 7 days.");
         }
 
-        // Reject a missing node id.
+        // Reject a missing node id
         if (string.IsNullOrWhiteSpace(request.NodeId))
         {
             throw new InvalidOperationException("Node ID is required.");
         }
 
-        // Validate destination slot exists for the node (excluding this reservation)
+        // Validate that the destination slot exists for the node
         var slots = await _nodeService.GetAvailableSlotsExcludingReservationAsync(request.NodeId.Trim(), request.SlotDateTime.Date, reservation.Id);
         var match = slots.FirstOrDefault(s => Math.Abs((s.Start - request.SlotDateTime).TotalMinutes) < 1);
         if (match == null)
@@ -200,26 +193,36 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException("Slot not available.");
         }
 
-        // Perform transaction: ensure capacity at destination slot excluding this reservation, then update
         var node = await _nodeService.GetByNodeIdAsync(request.NodeId.Trim());
         if (node == null)
         {
             throw new InvalidOperationException("Node not found.");
         }
 
+        var oldNodeId = reservation.NodeId;
+        var oldSlot = reservation.SlotDateTime;
+        var newNodeId = request.NodeId.Trim();
+
+        // Claim the destination slot's capacity and release the old one inside one transaction
         await _transactionRunner.RunInTransactionAsync<bool>(async s =>
         {
             var infraRepo = (SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository)_reservationRepository;
-            var reservedCount = await infraRepo.CountReservationsForSlotExcludingAsync(s, request.NodeId.Trim(), request.SlotDateTime, reservation.Id);
-            if (reservedCount >= node.AvailableBatterySlots)
+
+            // Only touch the counters when the node or time actually changes
+            bool sameSlot = newNodeId == oldNodeId && match.Start == oldSlot;
+            if (!sameSlot)
             {
-                throw new InvalidOperationException("Slot capacity reached.");
+                // Claim the new slot first so a failed claim never frees the old one
+                var claimed = await _slotCounterRepository.TryReserveAsync(s, newNodeId, match.Start, node.AvailableBatterySlots);
+                if (!claimed) throw new InvalidOperationException("Slot capacity reached.");
+
+                // Only after the new slot is secured, release the old one
+                await _slotCounterRepository.DecrementAsync(s, oldNodeId, oldSlot);
             }
 
-            reservation.NodeId = request.NodeId.Trim();
-            reservation.SlotDateTime = request.SlotDateTime;
+            reservation.NodeId = newNodeId;
+            reservation.SlotDateTime = match.Start;
             reservation.LastModifiedAt = DateTime.UtcNow;
-
             await infraRepo.UpdateAsync(s, reservation);
 
             return true;
@@ -250,6 +253,9 @@ public class ReservationService : IReservationService
 
         await _transactionRunner.RunInTransactionAsync<bool>(async s =>
         {
+            // Free this reservation's unit of slot capacity, then mark it cancelled
+            await _slotCounterRepository.DecrementAsync(s, reservation.NodeId, reservation.SlotDateTime);
+
             reservation.Status = ReservationStatus.Cancelled;
             reservation.LastModifiedAt = DateTime.UtcNow;
 

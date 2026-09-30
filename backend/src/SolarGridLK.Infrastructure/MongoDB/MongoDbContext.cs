@@ -32,7 +32,7 @@ public class MongoDbContext
             _database.GetCollection<BsonDocument>(name).Indexes.CreateOne(indexModel);
         }
 
-        if (name == MongoCollectionNames.SlotCounters)
+        if (name == MongoCollectionNames.EnergyBookingSlots)
         {
             // Ensure unique slot counter index on NodeId + SlotStartUtc
             var indexKeys = Builders<BsonDocument>.IndexKeys

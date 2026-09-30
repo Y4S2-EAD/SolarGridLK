@@ -246,8 +246,8 @@ class ProsumerBookingsActivity : AppCompatActivity() {
             startUtc
         }
 
-        val capacityInfo = if (slot.availableCount != null && slot.capacity != null) {
-            " [${slot.availableCount}/${slot.capacity}]"
+        val capacityInfo = if (slot.reservedCount != null && slot.capacity != null) {
+            " [${slot.reservedCount}/${slot.capacity} booked]"
         } else ""
 
         val isAvailable = slot.isAvailable == true && (slot.availableCount == null || slot.availableCount > 0)
@@ -334,7 +334,7 @@ class ProsumerBookingsActivity : AppCompatActivity() {
                     val rawError = response.errorBody()?.string()
                     when (response.code()) {
                         409 -> {
-                            showError("Slot full. Refreshing availability...")
+                            showError("That slot just filled up. Please pick another slot.")
                             loadBookings()
                         }
                         412 -> {
@@ -402,7 +402,7 @@ class ProsumerBookingsActivity : AppCompatActivity() {
             return "Session expired. Please log in again."
         }
         if (responseCode == 409) {
-            return "Slot full. Refreshing availability."
+            return "That slot just filled up. Please pick another slot"
         }
         if (responseCode == 412) {
             val extracted = extractJsonMessage(rawJson)

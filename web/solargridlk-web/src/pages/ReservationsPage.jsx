@@ -1,3 +1,10 @@
+/*
+ * File: ReservationsPage.jsx
+ * Project: SolarGridLK.Web
+ * Description: Reservation desk for Grid Operators and Backoffice: lists reservations, filters by status, approves, cancels, and edits slots.
+ * Author: Nipuni Bandara
+ */
+
 import { useEffect, useState, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -5,13 +12,13 @@ import { useAuth } from "../context/AuthContext";
 import {
     approveReservation,
     cancelReservation,
+    completeReservation,
     createReservation,
     getReservations,
     updateReservation,
     interpretReservationError,
 } from "../api/reservationApi";
-import { getNodeSlots } from "../api/nodeApi";
-import { getNodes } from "../api/nodeApi";
+import { getNodeSlots, getNodes} from "../api/nodeApi";
 
 const emptyForm = {
     prosumerNic: "",
@@ -45,6 +52,9 @@ const hasAtLeastHours = (date, hours) => {
     return date.getTime() - now >= hours * 60 * 60 * 1000;
 };
 
+// Return a Date the given number of days from now (0 = now).
+const daysFromNow = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
 const ReservationsPage = () => {
     const { user } = useAuth();
     const canManageReservations = user?.role === "GridOperator";
@@ -62,6 +72,7 @@ const ReservationsPage = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [copiedTokenId, setCopiedTokenId] = useState(null);
+    const [slots, setSlots] = useState([]);
 
     const loadReservations = useCallback(async () => {
         try {
@@ -217,25 +228,17 @@ const ReservationsPage = () => {
                 const info = interpretReservationError(err);
 
                 if (info.refreshSlots) {
-                    // Reload the server-provided slots for the selected node/date so user can pick another one.
+                    // Reload the slots so the user can see which are still free.
                     if (formData.nodeId && formData.slotDate) {
-                        const isoDate = formData.slotDate; // yyyy-mm-dd
                         try {
-                            const slotsResp = await getNodeSlots(formData.nodeId, isoDate);
-                            if (slotsResp?.success) {
-                                // Show top-most message and keep form open for user to choose
-                                setError(info.message || "Slot changed. Availability refreshed.");
-                                // TODO: UI: present slotsResp.data to user (console for now)
-                                console.info("Refreshed slots:", slotsResp.data);
-                            }
+                            const slotsResp = await getNodeSlots(formData.nodeId, formData.slotDate);
+                            if (slotsResp?.success) setSlots(slotsResp.data || []);
                         } catch (slotErr) {
                             console.error("Failed to refresh slots:", slotErr);
                         }
                     }
 
                     setError(info.message || "Slot state changed; please pick another slot.");
-                } else if (info.retry) {
-                    setError(info.message || "Slot already reserved. Try another slot.");
                 } else if (info.code === 401) {
                     setError(info.message);
                 } else {
@@ -271,23 +274,25 @@ const ReservationsPage = () => {
         }));
     };
 
-    // Optional: load and log server slots when node/date selected for editing (GridOperator edits)
+    // Load the node's slots for the chosen date so the editor can show capacity.
     useEffect(() => {
         const fetchSlots = async () => {
-            if (!formData.nodeId || !formData.slotDate) return;
+            if (!isFormOpen || !formData.nodeId || !formData.slotDate) {
+                setSlots([]);
+                return;
+            }
 
             try {
                 const slotsResp = await getNodeSlots(formData.nodeId, formData.slotDate);
-                if (slotsResp?.success) {
-                    console.info("Available slots for edit:", slotsResp.data);
-                }
+                setSlots(slotsResp?.success ? slotsResp.data || [] : []);
             } catch (err) {
                 console.error("Failed to load node slots:", err);
+                setSlots([]);
             }
         };
 
         fetchSlots();
-    }, [formData.nodeId, formData.slotDate]);
+    }, [isFormOpen, formData.nodeId, formData.slotDate]);
 
     const handleCopyToken = async (reservation) => {
         if (!reservation.qrCode) return;
@@ -302,10 +307,7 @@ const ReservationsPage = () => {
     };
 
     const handleReservationAction = async (reservation, action) => {
-        const actionName = action === "approve" ? "approve" : "cancel";
-        const confirmed = window.confirm(
-            `Are you sure you want to ${actionName} this reservation?`
-        );
+        const confirmed = window.confirm(`Are you sure you want to ${action} this reservation?`);
 
         if (!confirmed) return;
 
@@ -314,26 +316,33 @@ const ReservationsPage = () => {
             setError("");
             setSuccess("");
 
-            // Client-side guard: updates/cancels require at least 12 hours notice
+            // Cancellations need at least 12 hours notice; approve and complete do not.
             const slotDate = reservation.slotDateTime ? new Date(reservation.slotDateTime) : null;
-            if (action !== "approve" && !hasAtLeastHours(slotDate, 12)) {
-                setError("Updates and cancellations must be made at least 12 hours before the reserved slot.");
-                setActionId(null);
+            if (action === "cancel" && !hasAtLeastHours(slotDate, 12)) {
+                setError("Cancellations must be made at least 12 hours before the reserved slot.");
                 return;
             }
 
-            const response = action === "approve" ? await approveReservation(reservation.id) : await cancelReservation(reservation.id);
+            let response;
+            if (action === "approve") {
+                response = await approveReservation(reservation.id);
+            } else if (action === "complete") {
+                response = await completeReservation(reservation.id);
+            } else {
+                response = await cancelReservation(reservation.id);
+            }
 
             if (!response.success) {
                 setError(response.message || "Reservation action failed.");
                 return;
             }
 
-            setSuccess(
-                action === "approve"
-                    ? "Reservation approved successfully."
-                    : "Reservation cancelled successfully."
-            );
+            const messages = {
+                approve: "Reservation approved successfully.",
+                complete: "Reservation marked as completed.",
+                cancel: "Reservation cancelled successfully.",
+            };
+            setSuccess(messages[action]);
 
             await loadReservations();
         } catch (error) {
@@ -362,11 +371,12 @@ const ReservationsPage = () => {
                 {/* Web/backoffice does not expose 'Add reservation' to avoid duplicate flows. */}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
                 {[
                     { label: "Total reservations", value: reservationCounts.total, color: "text-[#e7ecf5]" },
                     { label: "Awaiting approval", value: reservationCounts.pending, color: "text-[#f4a93b]" },
                     { label: "Approved", value: reservationCounts.approved, color: "text-emerald-400" },
+                    { label: "Completed", value: reservationCounts.completed, color: "text-sky-400" },
                     { label: "Cancelled", value: reservationCounts.cancelled, color: "text-red-400" },
                 ].map((item) => (
                     <div key={item.label} className="rounded-lg border border-[#1c2942] bg-[#101a30] px-4 py-3 shadow-lg shadow-black/5">
@@ -576,7 +586,18 @@ const ReservationsPage = () => {
                                                     </button>
                                                 )}
 
-                                                {reservation.status !== "Cancelled" && (
+                                                {reservation.status === "Approved" && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleReservationAction(reservation, "complete")}
+                                                        disabled={actionId === reservation.id}
+                                                        className="text-xs text-sky-300 hover:text-sky-200 border border-sky-900/40 hover:border-sky-700/50 disabled:opacity-40 rounded-md px-2.5 py-1.5"
+                                                    >
+                                                        {actionId === reservation.id ? "Saving..." : "Complete"}
+                                                    </button>
+                                                )}
+
+                                                {(reservation.status === "Pending" || reservation.status === "Approved") && (
                                                     <button
                                                         type="button"
                                                         onClick={() => handleReservationAction(reservation, "cancel")}
@@ -605,7 +626,6 @@ const ReservationsPage = () => {
                                                         Edit
                                                     </button>
                                                 )}
-
                                             </div>
                                         </td>
                                     )}
@@ -701,9 +721,41 @@ const ReservationsPage = () => {
                                         dateFormat="MMMM d, yyyy h:mm aa"
                                         placeholderText="Select date and time"
                                         required
+                                        minDate={daysFromNow(0)}
+                                        maxDate={daysFromNow(7)}
                                         className="w-full bg-[#0b1120] border border-[#2a3a56] rounded-md px-3.5 py-2.5 text-sm text-[#e7ecf5] focus:outline-none focus:border-[#f4a93b]"
                                     />
                                 </div>
+
+                                {slots.length > 0 && (
+                                    <div>
+                                        <p className="block text-sm text-[#a7b2c7] mb-1.5">Slots on this day (booked/capacity)</p>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {slots.map((slot) => {
+                                                const start = new Date(slot.start);
+                                                const selected = pickerValue && pickerValue.getTime() === start.getTime();
+
+                                                return (
+                                                    <button
+                                                        key={slot.start}
+                                                        type="button"
+                                                        disabled={!slot.isAvailable && !selected}
+                                                        onClick={() => handlePickerChange(start)}
+                                                        className={`rounded-md border px-2 py-2 text-xs transition-colors disabled:opacity-40 ${selected
+                                                                ? "bg-[#f4a93b] text-[#0b1120] border-[#f4a93b]"
+                                                                : "bg-[#0b1120] text-[#a7b2c7] border-[#2a3a56] hover:border-[#f4a93b]"
+                                                            }`}
+                                                    >
+                                                        {start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                                                        <span className="block text-[10px] opacity-80">
+                                                            {slot.reservedCount}/{slot.capacity}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <button
                                     type="submit"

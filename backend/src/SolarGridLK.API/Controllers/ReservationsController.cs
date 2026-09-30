@@ -39,7 +39,7 @@ public class ReservationsController : ControllerBase
         catch (InvalidOperationException ex)
         {
             // Map slot reservation conflicts to 409 Conflict so clients can treat them specially
-            if (ex.Message.Contains("already reserved"))
+            if(ex.Message.Contains("already reserved") || ex.Message.Contains("capacity reached"))
             {
                 return Conflict(new { success = false, code = "SlotTaken", message = ex.Message });
             }
@@ -76,7 +76,7 @@ public class ReservationsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, [FromBody] UpdateReservationDto request)
     {
-        // Modify an existing reservation's slot time, enforcing the 12-hour notice rule.
+        // Modify an existing reservation's node and slot time, enforcing the 12-hour notice rule.
         try
         {
             var reservation = await _reservationService.UpdateReservationAsync(id, request);
@@ -88,7 +88,7 @@ public class ReservationsController : ControllerBase
         catch (InvalidOperationException ex)
         {
             // Map slot reservation conflicts to 409 Conflict so clients can treat them specially
-            if (ex.Message.Contains("already reserved"))
+            if (ex.Message.Contains("already reserved") || ex.Message.Contains("capacity reached"))
             {
                 return Conflict(new { success = false, code = "SlotTaken", message = ex.Message });
             }

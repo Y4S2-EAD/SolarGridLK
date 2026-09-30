@@ -21,23 +21,40 @@ export const approveReservation = async (id) => {
     return response.data;
 };
 
+export const completeReservation = async (id) => {
+    const response = await apiClient.post(`/reservations/${id}/complete`);
+    return response.data;
+};
+
 export const cancelReservation = async (id) => {
     const response = await apiClient.delete(`/reservations/${id}`);
     return response.data;
 };
 
-export const interpretReservationError = (message, status) => {
+// Turn an Axios error into { code, message, refreshSlots } for the reservation page.
+export const interpretReservationError = (error) => {
+    const status = error?.response?.status;
+    const serverMessage = error?.response?.data?.message;
+
     if (status === 401) {
-        return "Your session has expired. Please log in again.";
+        return { code: 401, message: "Your session has expired. Please log in again." };
     }
     if (status === 403) {
-        return "You do not have permission to modify reservations.";
+        return { code: 403, message: "You do not have permission to modify reservations." };
     }
     if (status === 404) {
-        return message || "Reservation not found.";
+        return { code: 404, message: serverMessage || "Reservation not found." };
     }
-    if (message && message.toLowerCase().includes("not available")) {
-        return "The requested reservation slot is not available.";
+    if (status === 409) {
+        // The slot filled up (or was taken) since the user last looked; the page reloads the slots.
+        return {
+            code: 409,
+            refreshSlots: true,
+            message: serverMessage || "That slot is full. Please pick another one.",
+        };
     }
-    return "An error occurred while processing your request.";
-}
+    return {
+        code: status,
+        message: serverMessage || "An error occurred while processing your request.",
+    };
+};

@@ -6,6 +6,7 @@ using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
 using SolarGridLK.Domain.Entities;
 using SolarGridLK.Domain.Enums;
+using SolarGridLK.Infrastructure.Repositories;
 
 namespace SolarGridLK.Infrastructure.Services;
 
@@ -27,16 +28,19 @@ public class MicrogridNodeService : IMicrogridNodeService
     private readonly IMicrogridNodeRepository _nodeRepository;
     private readonly IReservationRepository _reservationRepository;
     private readonly IUserRepository _userRepository;
+    private readonly SlotCounterRepository _slotCounterRepository;
 
     public MicrogridNodeService(
         IMicrogridNodeRepository nodeRepository,
         IReservationRepository reservationRepository,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        SlotCounterRepository slotCounterRepository)
     {
-        // Store the node repository, the existing reservation lookup, and staff user lookup.
+        // Store the node repository, the reservation lookup, staff user lookup, and the slot counter store.
         _nodeRepository = nodeRepository;
         _reservationRepository = reservationRepository;
         _userRepository = userRepository;
+        _slotCounterRepository = slotCounterRepository;
     }
 
     public async Task<MicrogridNodeDto> CreateAsync(CreateMicrogridNodeDto request)
@@ -272,14 +276,14 @@ public class MicrogridNodeService : IMicrogridNodeService
                 : "Asia/Colombo"
         );
 
+        // Pick the operating windows that match the requested day of the week.
         var dayName = date.DayOfWeek.ToString();
         var windows = node.Schedule.Where(w =>
             string.Equals(w.DayOfWeek, dayName, StringComparison.OrdinalIgnoreCase));
 
-        var reservations = await _reservationRepository.GetByNodeIdAndDateAsync(node.NodeId, date);
-        var bookedStarts = new HashSet<DateTime>(reservations
-            .Where(r => r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved)
-            .Select(r => r.SlotDateTime));
+        // Read how many bookings each slot already holds from the EnergyBookingSlots counters.
+        var reservedCounts = await _slotCounterRepository.GetReservedCountsAsync(node.NodeId);
+        var capacity = node.AvailableBatterySlots;
 
         var slots = new List<AvailableSlotDto>();
         foreach (var w in windows)
@@ -298,17 +302,17 @@ public class MicrogridNodeService : IMicrogridNodeService
             while (s.AddMinutes(slotMinutes) <= boundary)
             {
                 var slotEnd = s.AddMinutes(slotMinutes);
-                var isFuture = s > DateTime.UtcNow; // Correctly evaluates future hours today!
-                var booked = bookedStarts.Contains(s);
+                var isFuture = s > DateTime.UtcNow;
+                reservedCounts.TryGetValue(s, out var reserved);
 
                 slots.Add(new AvailableSlotDto
                 {
                     Start = s,
                     End = slotEnd,
-                    IsAvailable = isFuture && !booked,
-                    Capacity = 1,
-                    ReservedCount = booked ? 1 : 0,
-                    Available = (isFuture && !booked) ? 1 : 0
+                    IsAvailable = isFuture && reserved < capacity,
+                    Capacity = capacity,
+                    ReservedCount = reserved,
+                    Available = isFuture ? Math.Max(0, capacity - reserved) : 0
                 });
 
                 s = slotEnd;

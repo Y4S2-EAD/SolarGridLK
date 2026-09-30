@@ -9,5 +9,5 @@ public static class MongoCollectionNames
     public const string MicrogridNodes = "MicrogridNodes";
 
     public const string EnergyReservations = "EnergyReservations";
-    public const string SlotCounters = "SlotCounters";
+    public const string EnergyBookingSlots = "EnergyBookingSlots";
 }
