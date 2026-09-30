@@ -57,7 +57,10 @@ const daysFromNow = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
 const ReservationsPage = () => {
     const { user } = useAuth();
-    const canManageReservations = user?.role === "GridOperator";
+    const canManageReservations = [
+        "Backoffice",
+        "GridOperator",
+    ].includes(user?.role);
     const [reservations, setReservations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -367,8 +370,24 @@ const ReservationsPage = () => {
                     </p>
                 </div>
 
-                {/* Creation of reservations is performed by prosumers via the mobile app. */}
-                {/* Web/backoffice does not expose 'Add reservation' to avoid duplicate flows. */}
+                {canManageReservations && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setFormData(emptyForm);
+                            setEditingReservationId(null);
+                            setPickerValue(null);
+                            setError("");
+                            setSuccess("");
+                            setIsFormOpen(true);
+                        }}
+                        className="rounded-md bg-[#f4a93b] px-4 py-2.5
+                   text-sm font-semibold text-[#0b1120]
+                   hover:bg-[#ffbb52]"
+                    >
+                        + Add Reservation
+                    </button>
+                )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
@@ -770,6 +789,7 @@ const ReservationsPage = () => {
                                 </button>
                             </form>
                         </div>
+                        creation
                     </>
                 )}
             </div>
