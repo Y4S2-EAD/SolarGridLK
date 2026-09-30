@@ -9,6 +9,7 @@ import {
     getReservations,
     updateReservation,
 } from "../api/reservationApi";
+import { getNodes } from "../api/nodeApi";
 
 const emptyForm = {
     prosumerNic: "",
@@ -42,6 +43,7 @@ const ReservationsPage = () => {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [saving, setSaving] = useState(false);
     const [pickerValue, setPickerValue] = useState(null);
+    const [nodes, setNodes] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [copiedTokenId, setCopiedTokenId] = useState(null);
@@ -68,6 +70,28 @@ const ReservationsPage = () => {
 
     useEffect(() => {
         loadReservations();
+        // Load nodes for the reservation form (show only active nodes)
+        let cancelled = false;
+
+        const loadNodes = async () => {
+            try {
+                const response = await getNodes();
+
+                if (cancelled) return;
+
+                if (response.success) {
+                    setNodes(response.data || []);
+                }
+            } catch (err) {
+                console.error("Failed to load nodes:", err);
+            }
+        };
+
+        loadNodes();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     const filteredReservations = reservations.filter((reservation) => {
@@ -112,6 +136,10 @@ const ReservationsPage = () => {
         setPickerValue(null);
         setError("");
         setSuccess("");
+        // If the logged-in user is a prosumer, prefill the NIC
+        if (user?.role === "Prosumer" && user?.username) {
+            setFormData((prev) => ({ ...prev, prosumerNic: user.username }));
+        }
         setIsFormOpen(true);
     };
 
@@ -257,6 +285,7 @@ const ReservationsPage = () => {
                             : "View energy reservations and their current status."}
                     </p>
                 </div>
+                    
                 {canManageReservations && (
                     <button
                         type="button"
@@ -298,6 +327,29 @@ const ReservationsPage = () => {
                     {success}
                 </div>
             )}
+
+            {/* Status filter tabs */}
+            <div className="mt-3 lg:mt-0">
+                <div className="flex items-center gap-2">
+                    {[
+                        { key: "All", label: "All", count: reservationCounts.total },
+                        { key: "Pending", label: "Pending", count: reservationCounts.pending },
+                        { key: "Approved", label: "Approved", count: reservationCounts.approved },
+                        { key: "Completed", label: "Completed", count: reservationCounts.completed },
+                        { key: "Cancelled", label: "Cancelled", count: reservationCounts.cancelled },
+                    ].map((tab) => (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setStatusFilter(tab.key)}
+                            className={`text-xs font-medium rounded-md px-3 py-1.5 transition-colors ${statusFilter === tab.key ? 'bg-[#f4a93b] text-[#0b1120]' : 'bg-[#0b1120] text-[#a7b2c7] border border-[#2a3a56]'}`}
+                        >
+                            {tab.label}
+                            <span className="ml-2 inline-block text-[11px] px-2 py-0.5 rounded-full bg-[#0b1120] text-[#7c8ba6]">{tab.count}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
 
             <div className="bg-[#101a30] border border-[#1c2942] rounded-lg overflow-hidden shadow-lg shadow-black/10">
                 <div className="flex flex-col gap-4 border-b border-[#1c2942] bg-[#132038]/60 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
@@ -542,17 +594,25 @@ const ReservationsPage = () => {
 
                                         <div>
                                             <label htmlFor="nodeId" className="block text-sm text-[#a7b2c7] mb-1.5">
-                                                Node ID
+                                                Node
                                             </label>
-                                            <input
+                                            <select
                                                 id="nodeId"
                                                 name="nodeId"
-                                                type="text"
                                                 value={formData.nodeId}
                                                 onChange={handleChange}
                                                 required
                                                 className="w-full bg-[#0b1120] border border-[#2a3a56] rounded-md px-3.5 py-2.5 text-sm text-[#e7ecf5] focus:outline-none focus:border-[#f4a93b]"
-                                            />
+                                            >
+                                                <option value="">Select a node</option>
+                                                {nodes
+                                                    .filter((n) => n.status === "Active")
+                                                    .map((n) => (
+                                                        <option key={n.nodeId} value={n.nodeId}>
+                                                            {n.name} — {n.location} ({n.nodeId})
+                                                        </option>
+                                                    ))}
+                                            </select>
                                         </div>
                                     </>
                                 )}

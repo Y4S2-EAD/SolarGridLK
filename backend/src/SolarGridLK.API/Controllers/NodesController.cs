@@ -9,7 +9,7 @@ namespace SolarGridLK.API.Controllers;
 
 [ApiController]
 [Route("api/nodes")]
-[Authorize(Policy = "BackofficeOrGridOperator")]
+[Authorize]
 public class NodesController : ControllerBase
 {
     private readonly IMicrogridNodeService _nodeService;
@@ -211,6 +211,37 @@ public class NodesController : ControllerBase
             return Ok(ApiResponse<MicrogridNodeDto>.Ok(
                 node,
                 "Battery slot availability updated successfully."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
+    }
+
+    [HttpGet("{nodeId}/slots")]
+    public async Task<IActionResult> GetSlots(string nodeId, [FromQuery] string date)
+    {
+        // Return this node's available booking slots for the given date.
+        if (!DateTime.TryParse(date, out var parsed))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Invalid date."
+            });
+        }
+
+        try
+        {
+            var slots = await _nodeService.GetAvailableSlotsAsync(nodeId, parsed.Date);
+
+            return Ok(ApiResponse<List<AvailableSlotDto>>.Ok(
+                slots,
+                "Slots retrieved successfully."));
         }
         catch (InvalidOperationException ex)
         {
