@@ -53,6 +53,17 @@
         android:textColor="@color/text_muted"
         android:textSize="13sp" />
 
+    <!-- Booked / Created On Date -->
+    <TextView
+        android:id="@+id/createdAtText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Booked on: 2026-09-29 16:21"
+        android:textColor="@color/text_hint"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <!-- Action Buttons Row: View QR, Modify, Cancel -->
     <LinearLayout
         android:layout_width="match_parent"

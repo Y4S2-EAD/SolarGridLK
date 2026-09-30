@@ -285,6 +285,7 @@ const ReservationsPage = () => {
                             : "View energy reservations and their current status."}
                     </p>
                 </div>
+                    
                 {canManageReservations && (
                     <button
                         type="button"
@@ -326,6 +327,29 @@ const ReservationsPage = () => {
                     {success}
                 </div>
             )}
+
+            {/* Status filter tabs */}
+            <div className="mt-3 lg:mt-0">
+                <div className="flex items-center gap-2">
+                    {[
+                        { key: "All", label: "All", count: reservationCounts.total },
+                        { key: "Pending", label: "Pending", count: reservationCounts.pending },
+                        { key: "Approved", label: "Approved", count: reservationCounts.approved },
+                        { key: "Completed", label: "Completed", count: reservationCounts.completed },
+                        { key: "Cancelled", label: "Cancelled", count: reservationCounts.cancelled },
+                    ].map((tab) => (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setStatusFilter(tab.key)}
+                            className={`text-xs font-medium rounded-md px-3 py-1.5 transition-colors ${statusFilter === tab.key ? 'bg-[#f4a93b] text-[#0b1120]' : 'bg-[#0b1120] text-[#a7b2c7] border border-[#2a3a56]'}`}
+                        >
+                            {tab.label}
+                            <span className="ml-2 inline-block text-[11px] px-2 py-0.5 rounded-full bg-[#0b1120] text-[#7c8ba6]">{tab.count}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
 
             <div className="bg-[#101a30] border border-[#1c2942] rounded-lg overflow-hidden shadow-lg shadow-black/10">
                 <div className="flex flex-col gap-4 border-b border-[#1c2942] bg-[#132038]/60 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">

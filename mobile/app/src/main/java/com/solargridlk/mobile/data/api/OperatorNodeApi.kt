@@ -12,10 +12,10 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 data class AvailableSlot(
-    @SerializedName(value = "slotDateTime", alternate = ["SlotDateTime"])
-    val slotDateTime: String?,
-    @SerializedName(value = "displayTime", alternate = ["DisplayTime", "time"])
-    val displayTime: String?,
+    @SerializedName(value = "start", alternate = ["Start"])
+    val start: String?,
+    @SerializedName(value = "end", alternate = ["End"])
+    val end: String?,
     @SerializedName(value = "isAvailable", alternate = ["IsAvailable", "available"])
     val isAvailable: Boolean?
 )
