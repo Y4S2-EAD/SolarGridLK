@@ -9,7 +9,7 @@ namespace SolarGridLK.API.Controllers;
 
 [ApiController]
 [Route("api/nodes")]
-[Authorize(Policy = "BackofficeOrGridOperator")]
+[Authorize]
 public class NodesController : ControllerBase
 {
     private readonly IMicrogridNodeService _nodeService;

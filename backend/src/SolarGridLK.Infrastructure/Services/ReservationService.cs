@@ -136,6 +136,21 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException("Reservations can only be made within the next 7 days.");
         }
 
+        // Reject a missing node id.
+        if (string.IsNullOrWhiteSpace(request.NodeId))
+        {
+            throw new InvalidOperationException("Node ID is required.");
+        }
+
+        // The requested time must exactly match one of this node's generated, available slots (excluding this reservation's own current slot).
+        var slots = await _nodeService.GetAvailableSlotsExcludingReservationAsync(request.NodeId.Trim(), request.SlotDateTime.Date, reservation.Id);
+        var match = slots.FirstOrDefault(s => s.Start == request.SlotDateTime);
+        if (match == null || !match.IsAvailable)
+        {
+            throw new InvalidOperationException("Slot not available.");
+        }
+
+        reservation.NodeId = request.NodeId.Trim();
         reservation.SlotDateTime = request.SlotDateTime;
         reservation.LastModifiedAt = DateTime.UtcNow;
         await _reservationRepository.UpdateAsync(reservation);

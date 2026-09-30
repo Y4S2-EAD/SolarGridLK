@@ -33,4 +33,7 @@ public interface IMicrogridNodeService
     Task<MicrogridNodeDto?> UpdateBatterySlotsAsync(
         string nodeId,
         UpdateBatterySlotsDto request);
+
+    // Return the available battery slots for a node on a specific date, excluding a specific reservation, divided into time slots of a given duration.
+    Task<List<AvailableSlotDto>> GetAvailableSlotsExcludingReservationAsync(string nodeId, DateTime date, string excludeReservationId, int slotMinutes = 30);
 }

@@ -27,4 +27,6 @@ public interface IReservationRepository
 
     Task UpdateAsync(Reservation reservation);
 
+    Task<List<Reservation>> GetByNodeIdAndDateExcludingAsync(string nodeId, DateTime date, string excludeReservationId);
+
 }

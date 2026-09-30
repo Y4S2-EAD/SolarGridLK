@@ -301,6 +301,50 @@ public class MicrogridNodeService : IMicrogridNodeService
         return MapToDto(node);
     }
 
+    public async Task<List<AvailableSlotDto>> GetAvailableSlotsExcludingReservationAsync(string nodeId, DateTime date, string excludeReservationId, int slotMinutes = 30)
+    {
+        // Look up the node and reject if missing or deactivated.
+        var node = await _nodeRepository.GetByNodeIdAsync(NormalizeNodeId(nodeId));
+        if (node == null)
+        {
+            throw new InvalidOperationException("Node not found.");
+        }
+        if (node.Status == NodeStatus.Deactivated)
+        {
+            throw new InvalidOperationException("Node is not active.");
+        }
+
+        var slOffset = TimeSpan.FromHours(5.5);
+        var dayName = date.DayOfWeek.ToString();
+        var windows = node.Schedule.Where(w =>
+            string.Equals(w.DayOfWeek, dayName, StringComparison.OrdinalIgnoreCase));
+
+        // Exclude the reservation being updated, so its own current slot doesn't block itself.
+        var reservations = await _reservationRepository.GetByNodeIdAndDateExcludingAsync(node.NodeId, date, excludeReservationId);
+        var bookedStarts = new HashSet<DateTime>(reservations
+            .Where(r => r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved)
+            .Select(r => r.SlotDateTime));
+
+        var slots = new List<AvailableSlotDto>();
+        foreach (var w in windows)
+        {
+            var startTime = TimeSpan.ParseExact(w.StartTime, @"hh\:mm", CultureInfo.InvariantCulture);
+            var endTime = TimeSpan.ParseExact(w.EndTime, @"hh\:mm", CultureInfo.InvariantCulture);
+            var s = date.Date + startTime - slOffset;
+            var boundary = date.Date + endTime - slOffset;
+
+            while (s.AddMinutes(slotMinutes) <= boundary)
+            {
+                var slotEnd = s.AddMinutes(slotMinutes);
+                var isFuture = s > DateTime.UtcNow;
+                var booked = bookedStarts.Contains(s);
+                slots.Add(new AvailableSlotDto { Start = s, End = slotEnd, IsAvailable = isFuture && !booked });
+                s = slotEnd;
+            }
+        }
+        return slots;
+    }
+
     private static string NormalizeNodeId(string? nodeId)
     {
         // Reject a missing node id and keep the exact text reservations already store.

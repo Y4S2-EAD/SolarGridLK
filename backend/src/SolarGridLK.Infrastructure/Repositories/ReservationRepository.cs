@@ -73,4 +73,12 @@ public class ReservationRepository : IReservationRepository
         return await _reservations.Find(r => r.QrCode == qrCode).FirstOrDefaultAsync();
     }
 
+    public async Task<List<Reservation>> GetByNodeIdAndDateExcludingAsync(string nodeId, DateTime date, string excludeReservationId)
+    {
+        //Return reservations for this node/day, excluding one reservation (used when checking a slot during its own update)
+        var start = date.Date;
+        var end = start.AddDays(1);
+        return await _reservations.Find(r => r.NodeId == nodeId && r.SlotDateTime >= start && r.SlotDateTime < end && r.Id != excludeReservationId).ToListAsync();
+    }
+
 }
