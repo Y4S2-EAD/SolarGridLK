@@ -1,6 +1,9 @@
 package com.solargridlk.mobile.ui.gridoperator
 
-import android.content.Intent
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import android.location.Location
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
@@ -8,8 +11,14 @@ import android.widget.ArrayAdapter
 import android.widget.ImageButton
 import android.widget.Spinner
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -18,6 +27,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.solargridlk.mobile.R
 import com.solargridlk.mobile.data.api.NodeApiClient
 import com.solargridlk.mobile.data.local.AppDatabase
@@ -30,25 +40,46 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var map: GoogleMap
     private lateinit var areaSpinner: Spinner
-    private var allNodes: List<Node> = emptyList()
-    private var isPickerMode: Boolean = false
+    private lateinit var nearbySwitch: SwitchCompat
+    private lateinit var fusedClient: FusedLocationProviderClient
 
-    private val sampleNodes = listOf(
-        Node("NODE-001", "Colombo Fort Hub", 6.9344, 79.8428, "Active", 25.0, "Colombo"),
-        Node("NODE-002", "Nugegoda Substation", 6.8649, 79.8997, "Active", 18.0, "Colombo"),
-        Node("NODE-003", "Moratuwa Solar Cluster", 6.7730, 79.8816, "Offline", 12.0, "Colombo"),
-        Node("NODE-004", "Kandy Grid Point", 7.2906, 80.6337, "Active", 20.0, "Kandy"),
-        Node("NODE-005", "Galle Coastal Node", 6.0535, 80.2210, "Active", 15.0, "Galle")
-    )
+    private var allNodes: List<Node> = emptyList()
+    private var selectedArea: String = "All areas"
+    private var nearbyOn: Boolean = false
+
+    private val nearbyRadiusMeters = 10_000f
+    private val latRange = 5.5..10.2
+    private val lngRange = 79.2..82.2
+
+    private val locationPermLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                enableMyLocation()
+                applyFilters()
+            } else {
+                nearbyOn = false
+                nearbySwitch.isChecked = false
+                Toast.makeText(this, "Location permission is needed for nearby nodes", Toast.LENGTH_LONG).show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_nodes_map)
 
-        isPickerMode = intent.getBooleanExtra("IS_PICKER_MODE", false)
-
         findViewById<ImageButton>(R.id.backButton).setOnClickListener { finish() }
         areaSpinner = findViewById(R.id.areaSpinner)
+        nearbySwitch = findViewById(R.id.nearbySwitch)
+        fusedClient = LocationServices.getFusedLocationProviderClient(this)
+
+        nearbySwitch.setOnCheckedChangeListener { _, checked ->
+            nearbyOn = checked
+            if (checked && !hasLocationPermission()) {
+                locationPermLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            } else {
+                applyFilters()
+            }
+        }
 
         val mapFragment = supportFragmentManager
             .findFragmentById(R.id.mapFragment) as SupportMapFragment
@@ -59,29 +90,7 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         map = googleMap
         map.uiSettings.isZoomControlsEnabled = true
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(7.8731, 80.7718), 7f))
-
-        map.setOnMarkerClickListener { marker ->
-            val selectedNode = allNodes.find { (it.name ?: it.id ?: "") == marker.title || it.id == marker.title }
-
-            if (isPickerMode && selectedNode != null) {
-                val isActive = selectedNode.status?.equals("Active", ignoreCase = true) == true
-                if (!isActive) {
-                    Toast.makeText(this, "This node is currently offline. Please select an active node.", Toast.LENGTH_SHORT).show()
-                    return@setOnMarkerClickListener true
-                }
-
-                val resultIntent = Intent().apply {
-                    putExtra("SELECTED_NODE_ID", selectedNode.id)
-                    putExtra("SELECTED_NODE_NAME", selectedNode.name ?: selectedNode.id)
-                }
-                setResult(RESULT_OK, resultIntent)
-                finish()
-                true
-            } else {
-                false
-            }
-        }
-
+        if (hasLocationPermission()) enableMyLocation()
         loadNodes()
     }
 
@@ -100,32 +109,33 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
                     )
                     live
                 } else {
-                    loadCachedOrSample(dao)
+                    loadCached(dao)
                 }
             } catch (e: Exception) {
-                loadCachedOrSample(dao)
+                loadCached(dao)
             }
 
             allNodes = nodes
             setupAreaFilter(nodes)
-            plotNodes(nodes)
+            applyFilters()
         }
     }
 
-    private suspend fun loadCachedOrSample(dao: NodeDao): List<Node> {
+    // Real cached data only — no mock/sample fallback
+    private suspend fun loadCached(dao: NodeDao): List<Node> {
         val cached = dao.getAll()
-        return if (cached.isNotEmpty()) {
-            Toast.makeText(this, "Offline — showing last saved nodes", Toast.LENGTH_SHORT).show()
-            cached.map { Node(it.id, it.name, it.latitude, it.longitude, it.status, it.capacityKw, it.location) }
-        } else {
-            Toast.makeText(this, "Offline — showing sample nodes", Toast.LENGTH_SHORT).show()
-            sampleNodes
+        if (cached.isEmpty()) {
+            Toast.makeText(this, "No node data available (offline)", Toast.LENGTH_SHORT).show()
+            return emptyList()
         }
+        Toast.makeText(this, "Offline — showing last saved nodes", Toast.LENGTH_SHORT).show()
+        return cached.map { Node(it.id, it.name, it.latitude, it.longitude, it.status, it.capacityKw, it.location) }
     }
 
     private fun setupAreaFilter(nodes: List<Node>) {
-        val areas = listOf("All areas") +
-            nodes.mapNotNull { it.location?.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
+        val districts = nodes.mapNotNull { it.location?.trim() }
+            .filter { it.isNotEmpty() }.distinct().sorted()
+        val areas = listOf("All areas") + districts
 
         val adapter = ArrayAdapter(this, R.layout.spinner_item, areas)
         adapter.setDropDownViewResource(R.layout.spinner_item)
@@ -133,16 +143,69 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
 
         areaSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val selected = areas[position]
-                val filtered = if (position == 0) allNodes
-                    else allNodes.filter { it.location?.trim().equals(selected, ignoreCase = true) }
-                plotNodes(filtered)
+                selectedArea = areas[position]
+                applyFilters()
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
 
-    private fun plotNodes(nodes: List<Node>) {
+    /** Central filter: district selection first, then optional 10 km proximity. */
+    private fun applyFilters() {
+        val base = if (selectedArea == "All areas") allNodes
+        else allNodes.filter { it.location?.trim().equals(selectedArea, ignoreCase = true) }
+
+        if (nearbyOn && hasLocationPermission()) {
+            filterNearbyThenPlot(base)
+        } else {
+            plotNodes(base)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun filterNearbyThenPlot(base: List<Node>) {
+        enableMyLocation()
+        val cts = CancellationTokenSource()
+        fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
+            .addOnSuccessListener { loc ->
+                if (loc == null) {
+                    Toast.makeText(this, "Current location unavailable — set a location in the emulator (Extended controls → Location)", Toast.LENGTH_LONG).show()
+                    plotNodes(base)
+                    return@addOnSuccessListener
+                }
+                val nearby = base.filter { n ->
+                    val lat = n.latitude ?: return@filter false
+                    val lng = n.longitude ?: return@filter false
+                    if (lat !in latRange || lng !in lngRange) return@filter false
+                    val r = FloatArray(1)
+                    Location.distanceBetween(loc.latitude, loc.longitude, lat, lng, r)
+                    r[0] <= nearbyRadiusMeters
+                }
+                Toast.makeText(this, "${nearby.size} node(s) within 10 km", Toast.LENGTH_SHORT).show()
+
+                plotNodes(nearby, fitCamera = false)
+                map.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 11f)
+                )
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Could not get current location", Toast.LENGTH_SHORT).show()
+                plotNodes(base)
+            }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun enableMyLocation() {
+        if (hasLocationPermission()) {
+            try { map.isMyLocationEnabled = true } catch (_: SecurityException) {}
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+
+    private fun plotNodes(nodes: List<Node> , fitCamera: Boolean = true) {
         if (!::map.isInitialized) return
         map.clear()
 
@@ -152,7 +215,7 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         for (node in nodes) {
             val lat = node.latitude ?: continue
             val lng = node.longitude ?: continue
-            if (lat !in 5.5..10.2 || lng !in 79.2..82.2) continue
+            if (lat !in latRange || lng !in lngRange) continue
             val pos = LatLng(lat, lng)
 
             val color = if (node.status?.equals("Active", true) == true)
@@ -176,7 +239,7 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
             plotted++
         }
 
-        if (plotted > 0) {
+        if (fitCamera && plotted > 0) {
             map.moveCamera(CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 120))
         }
     }
