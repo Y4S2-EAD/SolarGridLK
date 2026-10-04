@@ -52,4 +52,10 @@ class ReservationRepository(private val reservationApi: ReservationApi) {
     ): Response<ReservationSingleResponse> {
         return reservationApi.createReservation(request)
     }
+
+    suspend fun approveReservation(
+        id: String
+    ): Response<ReservationSingleResponse> {
+        return reservationApi.approveReservation(id)
+    }
 }

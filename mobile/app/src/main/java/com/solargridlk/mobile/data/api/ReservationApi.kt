@@ -54,4 +54,10 @@ interface ReservationApi {
     suspend fun createReservation(
         @Body request: CreateReservationRequest
     ): Response<ReservationSingleResponse>
+
+    // 7. Approve reservation (GridOperator / Staff action)
+    @POST("reservations/{id}/approve")
+    suspend fun approveReservation(
+        @Path("id") id: String
+    ): Response<ReservationSingleResponse>
 }

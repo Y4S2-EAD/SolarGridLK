@@ -265,8 +265,12 @@ public class MicrogridNodeService : IMicrogridNodeService
             throw new InvalidOperationException("Node is not active.");
         }
 
-        // Sri Lanka is UTC+5:30; schedule times are entered in local time but SlotDateTime is stored UTC.
-        var slOffset = TimeSpan.FromHours(5.5);
+        // Sri Lanka timezone handling: schedule times are entered in local time (Asia/Colombo) but SlotDateTime is stored UTC.
+        var slTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
+            System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+                ? "Sri Lanka Standard Time"
+                : "Asia/Colombo"
+        );
 
         // Find the schedule windows for this day of week.
         var dayName = date.DayOfWeek.ToString();
@@ -286,15 +290,31 @@ public class MicrogridNodeService : IMicrogridNodeService
             var startTime = TimeSpan.ParseExact(w.StartTime, @"hh\:mm", CultureInfo.InvariantCulture);
             var endTime = TimeSpan.ParseExact(w.EndTime, @"hh\:mm", CultureInfo.InvariantCulture);
 
-            var s = date.Date + startTime - slOffset;
-            var boundary = date.Date + endTime - slOffset;
+            // Build the local datetime (Unspecified kind) then convert to UTC using the local Sri Lanka timezone
+            var localStart = DateTime.SpecifyKind(date.Date + startTime, DateTimeKind.Unspecified);
+            var localBoundary = DateTime.SpecifyKind(date.Date + endTime, DateTimeKind.Unspecified);
+
+            var s = TimeZoneInfo.ConvertTimeToUtc(localStart, slTimeZone);
+            var boundary = TimeZoneInfo.ConvertTimeToUtc(localBoundary, slTimeZone);
 
             while (s.AddMinutes(slotMinutes) <= boundary)
             {
                 var slotEnd = s.AddMinutes(slotMinutes);
                 var isFuture = s > DateTime.UtcNow;
-                var booked = bookedStarts.Contains(s);
-                slots.Add(new AvailableSlotDto { Start = s, End = slotEnd, IsAvailable = isFuture && !booked });
+                // Find any reservation matching this UTC instant (consider Pending or Approved as taken)
+                var reservation = reservations.FirstOrDefault(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1
+                                                                   && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
+                var booked = reservation != null;
+                var dto = new AvailableSlotDto
+                {
+                    Start = s,
+                    End = slotEnd,
+                    IsAvailable = isFuture && !booked,
+                    ReservationId = reservation?.Id,
+                    ReservationStatus = reservation?.Status.ToString(),
+                    ReservedBy = reservation?.ProsumerNic
+                };
+                slots.Add(dto);
                 s = slotEnd;
             }
         }

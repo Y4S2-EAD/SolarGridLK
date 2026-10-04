@@ -38,6 +38,12 @@ public class ReservationsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            // Map slot reservation conflicts to 409 Conflict so clients can treat them specially
+            if (ex.Message.Contains("already reserved"))
+            {
+                return Conflict(new { success = false, code = "SlotTaken", message = ex.Message });
+            }
+
             return BadRequest(new { success = false, message = ex.Message });
         }
     }
@@ -49,7 +55,10 @@ public class ReservationsController : ControllerBase
         [FromQuery] string? search)
     {
         // Return reservations, optionally filtered by prosumer, status, or search term.
-        var reservations = await _reservationService.GetReservationAsync(prosumerNic, status, search);
+        // Pass caller role and user id from JWT so Grid Operators receive only assigned-node reservations.
+        var callerRole = User?.Claims?.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value;
+        var callerUserId = User?.Claims?.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var reservations = await _reservationService.GetReservationAsync(prosumerNic, status, search, callerRole, callerUserId);
         return Ok(ApiResponse<List<ReservationDto>>.Ok(reservations, "Reservations retrieved successfully."));
     }
 
@@ -78,6 +87,12 @@ public class ReservationsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            // Map slot reservation conflicts to 409 Conflict so clients can treat them specially
+            if (ex.Message.Contains("already reserved"))
+            {
+                return Conflict(new { success = false, code = "SlotTaken", message = ex.Message });
+            }
+
             return BadRequest(new { success = false, message = ex.Message });
         }
     }

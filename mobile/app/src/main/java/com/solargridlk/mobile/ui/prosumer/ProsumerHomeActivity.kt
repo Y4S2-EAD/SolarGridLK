@@ -17,10 +17,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.solargridlk.mobile.R
+import com.solargridlk.mobile.data.api.AvailableSlot
 import com.solargridlk.mobile.data.api.NodeApiClient
 import com.solargridlk.mobile.data.api.RetrofitClient
 import com.solargridlk.mobile.data.model.CreateReservationRequest
-import com.solargridlk.mobile.data.model.MicrogridNode
 import com.solargridlk.mobile.data.model.Reservation
 import com.solargridlk.mobile.data.model.UpdateReservationRequest
 import com.solargridlk.mobile.data.repository.ReservationRepository
@@ -310,10 +310,11 @@ class ProsumerHomeActivity : AppCompatActivity() {
                 calendar.set(Calendar.MONTH, month)
                 calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
 
+                val dateIsoString = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
                 val dayOfWeekFormat = SimpleDateFormat("EEEE", Locale.US)
                 val dayOfWeek = dayOfWeekFormat.format(calendar.time)
 
-                fetchScheduleAndPickTimeSlotForModify(reservationId, targetNodeId, targetNodeName, calendar, dayOfWeek)
+                fetchScheduleAndPickTimeSlotForModify(reservationId, targetNodeId, targetNodeName, calendar, dateIsoString, dayOfWeek)
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -363,7 +364,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
     }
 
     private fun selectDateAndScheduleForNode(nodeId: String, nodeName: String) {
-        // Select booking date on calendar and query grid side schedules for day of week
+        // Select booking date on calendar and query grid side schedules
         val calendar = Calendar.getInstance()
 
         val datePicker = DatePickerDialog(
@@ -373,10 +374,11 @@ class ProsumerHomeActivity : AppCompatActivity() {
                 calendar.set(Calendar.MONTH, month)
                 calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
 
+                val dateIsoString = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
                 val dayOfWeekFormat = SimpleDateFormat("EEEE", Locale.US)
                 val dayOfWeek = dayOfWeekFormat.format(calendar.time)
 
-                fetchScheduleAndPickTimeSlot(nodeId, nodeName, calendar, dayOfWeek)
+                fetchScheduleAndPickTimeSlot(nodeId, nodeName, calendar, dateIsoString, dayOfWeek)
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -389,29 +391,37 @@ class ProsumerHomeActivity : AppCompatActivity() {
         datePicker.show()
     }
 
-    private fun generate30MinSlots(startStr: String?, endStr: String?): List<String> {
-        // Slice an operating window into 30-minute bookable slots
-        if (startStr.isNullOrBlank() || endStr.isNullOrBlank()) return emptyList()
-        val startHour = startStr.substringBefore(":").toIntOrNull() ?: return listOf("$startStr - $endStr")
-        val startMin = startStr.substringAfter(":").substringBefore(" ").toIntOrNull() ?: 0
-        val endHour = endStr.substringBefore(":").toIntOrNull() ?: return listOf("$startStr - $endStr")
-        val endMin = endStr.substringAfter(":").substringBefore(" ").toIntOrNull() ?: 0
-
-        val startTotalMin = startHour * 60 + startMin
-        val endTotalMin = endHour * 60 + endMin
-        if (startTotalMin >= endTotalMin) return listOf("$startStr - $endStr")
-
-        val slots = mutableListOf<String>()
-        var current = startTotalMin
-        while (current + 30 <= endTotalMin) {
-            val sh = current / 60
-            val sm = current % 60
-            val eh = (current + 30) / 60
-            val em = (current + 30) % 60
-            slots.add(String.format(Locale.US, "%02d:%02d - %02d:%02d", sh, sm, eh, em))
-            current += 30
+    private fun formatSlotLabel(slot: AvailableSlot): String {
+        // Format slot display label with 🟢 Available, 🟡 Pending, 🔴 Reserved status indicators
+        val startUtc = slot.start ?: return "Slot"
+        val localDisplay = try {
+            val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            val outputFormat = SimpleDateFormat("HH:mm", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("Asia/Colombo")
+            }
+            val cleanDate = startUtc.take(19)
+            val date = inputFormat.parse(cleanDate)
+            if (date != null) {
+                val endCal = Calendar.getInstance().apply {
+                    time = date
+                    add(Calendar.MINUTE, 30)
+                }
+                "${outputFormat.format(date)} - ${outputFormat.format(endCal.time)}"
+            } else {
+                startUtc
+            }
+        } catch (e: Exception) {
+            startUtc
         }
-        return slots
+
+        return when {
+            slot.isAvailable == true -> "🟢 $localDisplay (Available)"
+            slot.reservationStatus.equals("Pending", ignoreCase = true) -> "🟡 $localDisplay (Pending)"
+            slot.reservationStatus.equals("Approved", ignoreCase = true) -> "🔴 $localDisplay (Reserved)"
+            else -> "🔴 $localDisplay (Unavailable)"
+        }
     }
 
     private fun fetchScheduleAndPickTimeSlotForModify(
@@ -419,233 +429,102 @@ class ProsumerHomeActivity : AppCompatActivity() {
         nodeId: String,
         nodeName: String,
         calendar: Calendar,
+        dateIsoString: String,
         dayOfWeek: String
     ) {
-        // Fetch schedule and pick new time slot for modification
+        // Fetch server-provided slots for modification
         lifecycleScope.launch {
             try {
                 showLoading(true)
                 hideError()
 
                 val operatorApi = RetrofitClient.getOperatorNodeApi(this@ProsumerHomeActivity)
-
-                var nodeData: MicrogridNode? = null
-                try {
-                    val response = operatorApi.getNode(nodeId)
-                    if (response.isSuccessful && response.body()?.data != null) {
-                        nodeData = response.body()?.data
-                    }
-                } catch (_: Exception) {}
-
-                if (nodeData == null || nodeData.schedule.isNullOrEmpty()) {
-                    try {
-                        val allNodesRes = operatorApi.getNodes()
-                        if (allNodesRes.isSuccessful && !allNodesRes.body()?.data.isNullOrEmpty()) {
-                            nodeData = allNodesRes.body()?.data?.find {
-                                it.nodeId.equals(nodeId, ignoreCase = true) ||
-                                        it.name.equals(nodeId, ignoreCase = true) ||
-                                        it.name.equals(nodeName, ignoreCase = true)
-                            }
-                        }
-                    } catch (_: Exception) {}
-                }
-
+                val slotsRes = operatorApi.getAvailableSlots(nodeId, dateIsoString)
                 showLoading(false)
 
-                val scheduleList = nodeData?.schedule ?: emptyList()
+                val slotList = slotsRes.body()?.data ?: emptyList()
 
-                val dayPrefix = dayOfWeek.take(3)
-                val availableDaySlots = scheduleList.filter { slot ->
-                    val day = slot.dayOfWeek?.trim() ?: ""
-                    day.equals(dayOfWeek, ignoreCase = true) || day.equals(dayPrefix, ignoreCase = true)
-                }
+                if (slotsRes.isSuccessful && slotList.isNotEmpty()) {
+                    val displayLabels = slotList.map { formatSlotLabel(it) }.toTypedArray()
 
-                if (availableDaySlots.isNotEmpty()) {
-                    val all30MinSlots = mutableListOf<String>()
-                    for (slot in availableDaySlots) {
-                        val generated = generate30MinSlots(slot.startTime, slot.endTime)
-                        if (generated.isNotEmpty()) {
-                            all30MinSlots.addAll(generated)
-                        } else {
-                            all30MinSlots.add("${slot.startTime ?: "10:00"} - ${slot.endTime ?: "10:30"}")
+                    AlertDialog.Builder(this@ProsumerHomeActivity)
+                        .setTitle("Select New $nodeName Slot ($dayOfWeek)")
+                        .setItems(displayLabels) { _, which ->
+                            val selectedSlot = slotList[which]
+                            if (selectedSlot.isAvailable != true) {
+                                showError("This slot is already reserved or pending. Please choose an available green 🟢 slot.")
+                                return@setItems
+                            }
+
+                            val utcStartIso = selectedSlot.start ?: ""
+                            val displayLocalTime = formatSlotLabel(selectedSlot).replace("🟢 ", "").substringBefore(" (")
+
+                            modifyReservation(reservationId, nodeId, utcStartIso, displayLocalTime)
                         }
-                    }
-                    showTimeSlotDialogForModify(reservationId, nodeId, nodeName, calendar, dayOfWeek, all30MinSlots.distinct().toTypedArray())
+                        .setNegativeButton("Cancel", null)
+                        .show()
                 } else {
-                    val openDays = scheduleList.mapNotNull { it.dayOfWeek }.distinct().joinToString(", ")
-                    val helpMsg = if (openDays.isNotBlank()) {
-                        "$nodeName is closed on $dayOfWeek. Open operating days: $openDays"
-                    } else {
-                        "No operating slots configured by admin for $nodeName yet."
-                    }
-                    showError(helpMsg)
+                    showError("No slots available for $nodeName on $dayOfWeek ($dateIsoString).")
                 }
 
             } catch (e: Exception) {
                 showLoading(false)
-                showError("Network error fetching schedule: ${e.message}")
+                showError("Error fetching available slots: ${e.message}")
             }
         }
-    }
-
-    private fun showTimeSlotDialogForModify(
-        reservationId: String,
-        nodeId: String,
-        nodeName: String,
-        calendar: Calendar,
-        dayOfWeek: String,
-        slots: Array<String>
-    ) {
-        // Display available 30-minute grid time slots for modification
-        AlertDialog.Builder(this)
-            .setTitle("Select New $nodeName Slot ($dayOfWeek)")
-            .setItems(slots) { _, which ->
-                val chosenSlot = slots[which]
-                val timePart = chosenSlot.substringAfter(" ").ifEmpty { chosenSlot }
-                val startTime = timePart.substringBefore(" - ").trim()
-
-                val hour = startTime.substringBefore(":").toIntOrNull() ?: 10
-                val minute = startTime.substringAfter(":").toIntOrNull() ?: 0
-
-                calendar.set(Calendar.HOUR_OF_DAY, hour)
-                calendar.set(Calendar.MINUTE, minute)
-                calendar.set(Calendar.SECOND, 0)
-
-                if (calendar.timeInMillis <= System.currentTimeMillis()) {
-                    showError("Slot time must be in the future.")
-                    return@setItems
-                }
-
-                val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-                val newSlotDateTimeUtc = isoFormat.format(calendar.time)
-
-                val displayFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
-                val displayTime = displayFormat.format(calendar.time)
-
-                modifyReservation(reservationId, nodeId, newSlotDateTimeUtc, displayTime)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     private fun fetchScheduleAndPickTimeSlot(
         nodeId: String,
         nodeName: String,
         calendar: Calendar,
+        dateIsoString: String,
         dayOfWeek: String
     ) {
-        // Query GET /api/nodes/{nodeId} or GET /api/nodes for admin-configured operating windows
+        // Fetch server-provided 30-minute slots with availability and reservation status
         lifecycleScope.launch {
             try {
                 showLoading(true)
                 hideError()
 
                 val operatorApi = RetrofitClient.getOperatorNodeApi(this@ProsumerHomeActivity)
-
-                var nodeData: MicrogridNode? = null
-                try {
-                    val response = operatorApi.getNode(nodeId)
-                    if (response.isSuccessful && response.body()?.data != null) {
-                        nodeData = response.body()?.data
-                    }
-                } catch (_: Exception) {}
-
-                if (nodeData == null || nodeData.schedule.isNullOrEmpty()) {
-                    try {
-                        val allNodesRes = operatorApi.getNodes()
-                        if (allNodesRes.isSuccessful && !allNodesRes.body()?.data.isNullOrEmpty()) {
-                            nodeData = allNodesRes.body()?.data?.find {
-                                it.nodeId.equals(nodeId, ignoreCase = true) ||
-                                        it.name.equals(nodeId, ignoreCase = true) ||
-                                        it.name.equals(nodeName, ignoreCase = true)
-                            }
-                        }
-                    } catch (_: Exception) {}
-                }
-
+                val slotsRes = operatorApi.getAvailableSlots(nodeId, dateIsoString)
                 showLoading(false)
 
-                val scheduleList = nodeData?.schedule ?: emptyList()
+                val slotList = slotsRes.body()?.data ?: emptyList()
 
-                val dayPrefix = dayOfWeek.take(3)
-                val availableDaySlots = scheduleList.filter { slot ->
-                    val day = slot.dayOfWeek?.trim() ?: ""
-                    day.equals(dayOfWeek, ignoreCase = true) || day.equals(dayPrefix, ignoreCase = true)
-                }
+                if (slotsRes.isSuccessful && slotList.isNotEmpty()) {
+                    val displayLabels = slotList.map { formatSlotLabel(it) }.toTypedArray()
 
-                if (availableDaySlots.isNotEmpty()) {
-                    val all30MinSlots = mutableListOf<String>()
-                    for (slot in availableDaySlots) {
-                        val generated = generate30MinSlots(slot.startTime, slot.endTime)
-                        if (generated.isNotEmpty()) {
-                            all30MinSlots.addAll(generated)
-                        } else {
-                            all30MinSlots.add("${slot.startTime ?: "10:00"} - ${slot.endTime ?: "10:30"}")
+                    AlertDialog.Builder(this@ProsumerHomeActivity)
+                        .setTitle("Select $nodeName Slot ($dayOfWeek)")
+                        .setItems(displayLabels) { _, which ->
+                            val selectedSlot = slotList[which]
+                            if (selectedSlot.isAvailable != true) {
+                                showError("This slot is already reserved or pending. Please choose an available green 🟢 slot.")
+                                return@setItems
+                            }
+
+                            val utcStartIso = selectedSlot.start ?: ""
+                            val displayLocalTime = formatSlotLabel(selectedSlot).replace("🟢 ", "").substringBefore(" (")
+
+                            createReservation(nodeId, utcStartIso, displayLocalTime)
                         }
-                    }
-                    showTimeSlotDialog(nodeId, nodeName, calendar, dayOfWeek, all30MinSlots.distinct().toTypedArray())
+                        .setNegativeButton("Cancel", null)
+                        .show()
                 } else {
-                    val openDays = scheduleList.mapNotNull { it.dayOfWeek }.distinct().joinToString(", ")
-                    val helpMsg = if (openDays.isNotBlank()) {
-                        "$nodeName is closed on $dayOfWeek. Open operating days: $openDays"
-                    } else {
-                        "No operating slots configured by admin for $nodeName yet."
-                    }
-                    showError(helpMsg)
+                    showError("No slots available for $nodeName on $dayOfWeek ($dateIsoString).")
                 }
 
             } catch (e: Exception) {
                 showLoading(false)
-                showError("Network error fetching schedule: ${e.message}")
+                showError("Error fetching available slots: ${e.message}")
             }
         }
     }
 
-    private fun showTimeSlotDialog(
-        nodeId: String,
-        nodeName: String,
-        calendar: Calendar,
-        dayOfWeek: String,
-        slots: Array<String>
-    ) {
-        // Display available 30-minute grid time slots for the chosen day
-        AlertDialog.Builder(this)
-            .setTitle("Select $nodeName Slot ($dayOfWeek)")
-            .setItems(slots) { _, which ->
-                val chosenSlot = slots[which]
-                val timePart = chosenSlot.substringAfter(" ").ifEmpty { chosenSlot }
-                val startTime = timePart.substringBefore(" - ").trim()
-
-                val hour = startTime.substringBefore(":").toIntOrNull() ?: 10
-                val minute = startTime.substringAfter(":").toIntOrNull() ?: 0
-
-                calendar.set(Calendar.HOUR_OF_DAY, hour)
-                calendar.set(Calendar.MINUTE, minute)
-                calendar.set(Calendar.SECOND, 0)
-
-                if (calendar.timeInMillis <= System.currentTimeMillis()) {
-                    showError("Slot time must be in the future.")
-                    return@setItems
-                }
-
-                val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-                val newSlotDateTimeUtc = isoFormat.format(calendar.time)
-
-                val displayFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
-                val displayTime = displayFormat.format(calendar.time)
-
-                createReservation(nodeId, newSlotDateTimeUtc, displayTime)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
     private fun createReservation(nodeId: String, newSlotDateTimeUtc: String, displayLocalTime: String) {
-        // Send a new reservation request to the backend API
+        // Send a new reservation request to the backend API using server's canonical UTC start timestamp
         val prosumerNic = sessionManager.getUsername() ?: ""
         if (prosumerNic.isEmpty()) {
             showError("No session found. Please log in again.")
@@ -672,7 +551,13 @@ class ProsumerHomeActivity : AppCompatActivity() {
                     loadDashboard()
                 } else {
                     val rawError = response.errorBody()?.string()
-                    showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Failed to create reservation."))
+                    // If 409 conflict occurred, refresh dashboard and show specific message
+                    if (response.code() == 409) {
+                        showError("Slot already reserved by another prosumer. Refreshing slots...")
+                        loadDashboard()
+                    } else {
+                        showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Failed to create reservation."))
+                    }
                 }
             } catch (e: Exception) {
                 showError("Error creating reservation: ${e.message}")
@@ -705,7 +590,12 @@ class ProsumerHomeActivity : AppCompatActivity() {
                     loadDashboard()
                 } else {
                     val rawError = response.errorBody()?.string()
-                    showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Modification failed."))
+                    if (response.code() == 409) {
+                        showError("Slot already reserved by another prosumer. Refreshing slots...")
+                        loadDashboard()
+                    } else {
+                        showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Modification failed."))
+                    }
                 }
             } catch (e: Exception) {
                 showError("Error modifying reservation: ${e.message}")
@@ -828,6 +718,9 @@ class ProsumerHomeActivity : AppCompatActivity() {
         // Extract user-friendly error message from JSON error body or status code
         if (responseCode == 401) {
             return "Session expired. Please log in again."
+        }
+        if (responseCode == 409) {
+            return "Slot already reserved by another user. Please select a different slot."
         }
         if (!rawJson.isNullOrBlank()) {
             try {

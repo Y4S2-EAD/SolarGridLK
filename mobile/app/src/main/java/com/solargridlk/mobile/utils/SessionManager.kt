@@ -16,8 +16,9 @@ class SessionManager(context: Context) {
         fullName: String,
         expiresAt: String
     ) {
-        // Save the authenticated user session locally.
+        // Save the authenticated user session locally using token key solarGridToken.
         preferences.edit()
+            .putString("solarGridToken", token)
             .putString("token", token)
             .putString("username", username)
             .putString("role", role)
@@ -29,11 +30,12 @@ class SessionManager(context: Context) {
 
     fun getToken(): String? {
         // Return the stored JWT token.
-        return preferences.getString("token", null)
+        return preferences.getString("solarGridToken", null)
+            ?: preferences.getString("token", null)
     }
 
     fun getUsername(): String? {
-        // Return the stored username.
+        // Return the stored username / staff ID.
         return preferences.getString("username", null)
     }
 

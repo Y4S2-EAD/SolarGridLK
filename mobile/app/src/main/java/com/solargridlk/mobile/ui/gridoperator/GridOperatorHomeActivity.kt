@@ -14,69 +14,72 @@ class GridOperatorHomeActivity : AppCompatActivity() {
     private lateinit var sessionManager: SessionManager
 
     private lateinit var welcomeText: TextView
+    private lateinit var roleText: TextView
     private lateinit var logoutButton: Button
     private lateinit var scanVerifyButton: Button
+    private lateinit var microgridNodesButton: Button
+    private lateinit var nearbyNodesButton: Button
+    private lateinit var checkReservationsButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Initialize the Grid Operator home screen.
         super.onCreate(savedInstanceState)
-
         setContentView(R.layout.activity_grid_operator_home)
 
         sessionManager = SessionManager(this)
+        if (!sessionManager.isLoggedIn() || sessionManager.getRole() != "GridOperator") {
+            openLogin()
+            return
+        }
 
         initializeViews()
         displayUserInformation()
-        setupLogoutButton()
-        setupScanButton()
-
-        findViewById<Button>(R.id.nearbyNodesButton).setOnClickListener {
-            startActivity(Intent(this, NodesMapActivity::class.java))
-        }
-
-        findViewById<Button>(R.id.microgridNodesButton).setOnClickListener {
-            startActivity(Intent(this, NodeOperationsActivity::class.java))
-        }
+        setupButtons()
     }
 
     private fun initializeViews() {
-        // Connect the activity variables with the XML controls.
         welcomeText = findViewById(R.id.welcomeText)
+        roleText = findViewById(R.id.roleText)
         logoutButton = findViewById(R.id.logoutButton)
         scanVerifyButton = findViewById(R.id.scanVerifyButton)
+        microgridNodesButton = findViewById(R.id.microgridNodesButton)
+        nearbyNodesButton = findViewById(R.id.nearbyNodesButton)
+        checkReservationsButton = findViewById(R.id.checkReservationsButton)
     }
 
     private fun displayUserInformation() {
-        // Display the authenticated Grid Operator's name.
         val fullName = sessionManager.getFullName()
-
-        welcomeText.text =
-            "Welcome, ${fullName ?: "Grid Operator"}"
+        val username = sessionManager.getUsername()
+        welcomeText.text = "Welcome, ${fullName ?: "Grid Operator"}"
+        roleText.text = "Role: Grid Operator • ID: ${username ?: "-"}"
     }
 
-    private fun setupScanButton() {
-        // Open the QR scan & verify screen.
+    private fun setupButtons() {
+        checkReservationsButton.setOnClickListener {
+            startActivity(Intent(this, GridOperatorReservationsActivity::class.java))
+        }
+
         scanVerifyButton.setOnClickListener {
             startActivity(Intent(this, QrScanActivity::class.java))
         }
-    }
 
-    private fun setupLogoutButton() {
-        // Clear the session and return to the login screen.
+        nearbyNodesButton.setOnClickListener {
+            startActivity(Intent(this, NodesMapActivity::class.java))
+        }
+
+        microgridNodesButton.setOnClickListener {
+            startActivity(Intent(this, NodeOperationsActivity::class.java))
+        }
+
         logoutButton.setOnClickListener {
             sessionManager.clearSession()
-
-            val intent = Intent(
-                this,
-                LoginActivity::class.java
-            )
-
-            intent.flags =
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK
-
-            startActivity(intent)
-            finish()
+            openLogin()
         }
+    }
+
+    private fun openLogin() {
+        val intent = Intent(this, LoginActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
     }
 }
