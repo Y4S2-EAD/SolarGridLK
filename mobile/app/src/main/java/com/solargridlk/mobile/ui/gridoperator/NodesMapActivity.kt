@@ -30,6 +30,7 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.solargridlk.mobile.R
 import com.solargridlk.mobile.data.api.NodeApiClient
+import com.solargridlk.mobile.utils.SessionManager
 import com.solargridlk.mobile.data.local.AppDatabase
 import com.solargridlk.mobile.data.local.NodeDao
 import com.solargridlk.mobile.data.local.NodeEntity
@@ -98,10 +99,21 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         lifecycleScope.launch {
             val dao = AppDatabase.get(this@NodesMapActivity).nodeDao()
 
+            val isGridOperator = SessionManager(this@NodesMapActivity).getRole() == "GridOperator"
             val nodes: List<Node> = try {
                 val res = NodeApiClient.create(this@NodesMapActivity).getNodes()
                 val live = res.body()?.data
-                if (res.isSuccessful && !live.isNullOrEmpty()) {
+                if (res.isSuccessful && isGridOperator) {
+                    val assigned = live.orEmpty()
+                    // Replace the shared cache so another operator's nodes are not kept offline.
+                    dao.clear()
+                    dao.upsertAll(
+                        assigned.filter { it.id != null }.map {
+                            NodeEntity(it.id!!, it.name, it.latitude, it.longitude, it.status, it.capacityKw, it.location)
+                        }
+                    )
+                    assigned
+                } else if (res.isSuccessful && !live.isNullOrEmpty()) {
                     dao.upsertAll(
                         live.filter { it.id != null }.map {
                             NodeEntity(it.id!!, it.name, it.latitude, it.longitude, it.status, it.capacityKw, it.location)

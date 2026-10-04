@@ -1,9 +1,11 @@
-/* Description: Exposes microgrid node creation, listing, updates, schedule changes, deactivation, and battery-slot availability.*/
+/* Description: Exposes microgrid node creation, listing, updates, schedule changes, deactivation, battery-slot availability, and Grid Operator assignment.*/
 
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
+using SolarGridLK.Infrastructure.Services;
 
 namespace SolarGridLK.API.Controllers;
 
@@ -39,19 +41,17 @@ public class NodesController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new
-            {
-                success = false,
-                message = ex.Message
-            });
+            return InvalidNodeRequest(ex);
         }
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        // Return every microgrid node.
-        var nodes = await _nodeService.GetAllAsync();
+        // Backoffice and Prosumer receive every node. A Grid Operator receives only assigned nodes.
+        var nodes = await _nodeService.GetAllAsync(
+            GetCallerRole(),
+            GetCallerUserId());
 
         return Ok(ApiResponse<List<MicrogridNodeDto>>.Ok(
             nodes,
@@ -64,7 +64,10 @@ public class NodesController : ControllerBase
         // Return one microgrid node by its public node id.
         try
         {
-            var node = await _nodeService.GetByNodeIdAsync(nodeId);
+            var node = await _nodeService.GetByNodeIdAsync(
+                nodeId,
+                GetCallerRole(),
+                GetCallerUserId());
 
             if (node == null)
             {
@@ -115,11 +118,7 @@ public class NodesController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new
-            {
-                success = false,
-                message = ex.Message
-            });
+            return InvalidNodeRequest(ex);
         }
     }
 
@@ -197,7 +196,11 @@ public class NodesController : ControllerBase
         // Update battery-slot availability without changing node identity, location, capacity, or schedule.
         try
         {
-            var node = await _nodeService.UpdateBatterySlotsAsync(nodeId, request);
+            var node = await _nodeService.UpdateBatterySlotsAsync(
+                nodeId,
+                request,
+                GetCallerRole(),
+                GetCallerUserId());
 
             if (node == null)
             {
@@ -237,6 +240,24 @@ public class NodesController : ControllerBase
 
         try
         {
+            if (User.IsInRole("GridOperator"))
+            {
+                // Hide another operator's schedule slots the same way as the node itself.
+                var accessibleNode = await _nodeService.GetByNodeIdAsync(
+                    nodeId,
+                    "GridOperator",
+                    GetCallerUserId());
+
+                if (accessibleNode == null)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "Node not found."
+                    });
+                }
+            }
+
             var slots = await _nodeService.GetAvailableSlotsAsync(nodeId, parsed.Date);
 
             return Ok(ApiResponse<List<AvailableSlotDto>>.Ok(
@@ -251,5 +272,55 @@ public class NodesController : ControllerBase
                 message = ex.Message
             });
         }
+    }
+
+    private IActionResult InvalidNodeRequest(InvalidOperationException ex)
+    {
+        // A missing Grid Operator id is not found. Other validation errors stay bad requests.
+        if (ex.Message == MicrogridNodeService.GridOperatorNotFoundMessage)
+        {
+            return NotFound(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
+
+        return BadRequest(new
+        {
+            success = false,
+            message = ex.Message
+        });
+    }
+
+    private string? GetCallerRole()
+    {
+        // Read the role already carried by the JWT. Do not accept a role from the request body.
+        if (User.IsInRole("Backoffice"))
+        {
+            return "Backoffice";
+        }
+
+        if (User.IsInRole("Prosumer"))
+        {
+            return "Prosumer";
+        }
+
+        if (User.IsInRole("GridOperator"))
+        {
+            return "GridOperator";
+        }
+
+        var role = User.FindFirst(ClaimTypes.Role)?.Value
+            ?? User.FindFirst("role")?.Value;
+
+        return string.IsNullOrWhiteSpace(role) ? null : role.Trim();
+    }
+
+    private string? GetCallerUserId()
+    {
+        // Use the user id already stored in the JWT. Do not trust an id supplied by the client.
+        return User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("nameid")?.Value;
     }
 }

@@ -21,7 +21,11 @@ export const nodeFieldError = (fields, { requireNodeId = false } = {}) => {
     }
 
     if (!fields.location.trim()) {
-        return "Location is required.";
+        return "Please select a district.";
+    }
+
+    if (!String(fields.assignedGridOperatorId || "").trim()) {
+        return "Please select a Grid Operator.";
     }
 
     if (fields.latitude.trim() === "") {
@@ -91,6 +95,7 @@ export const toNodePayload = (fields, { includeNodeId = false } = {}) => {
         longitude: Number(fields.longitude),
         capacityKw: Number(fields.capacityKw),
         availableBatterySlots: Number(fields.availableBatterySlots),
+        assignedGridOperatorId: String(fields.assignedGridOperatorId || "").trim(),
     };
 
     if (includeNodeId) {
@@ -101,6 +106,46 @@ export const toNodePayload = (fields, { includeNodeId = false } = {}) => {
 
     return payload;
 };
+
+export const gridOperatorLabel = (node) => {
+    if (node?.assignedGridOperatorName) {
+        return node.assignedGridOperatorName;
+    }
+
+    if (node?.assignedGridOperatorId) {
+        return "Assigned operator";
+    }
+
+    return "Not assigned";
+};
+
+export const sriLankanDistricts = [
+    "Ampara",
+    "Anuradhapura",
+    "Badulla",
+    "Batticaloa",
+    "Colombo",
+    "Galle",
+    "Gampaha",
+    "Hambantota",
+    "Jaffna",
+    "Kalutara",
+    "Kandy",
+    "Kegalle",
+    "Kilinochchi",
+    "Kurunegala",
+    "Mannar",
+    "Matale",
+    "Matara",
+    "Monaragala",
+    "Mullaitivu",
+    "Nuwara Eliya",
+    "Polonnaruwa",
+    "Puttalam",
+    "Ratnapura",
+    "Trincomalee",
+    "Vavuniya",
+];
 
 export const daysOfWeek = [
     "Monday",
@@ -133,12 +178,20 @@ export const scheduleFieldError = (slots) => {
             continue;
         }
 
+        if (!startTime) {
+            return `${slot.dayOfWeek}: start time is required.`;
+        }
+
+        if (!endTime) {
+            return `${slot.dayOfWeek}: end time is required.`;
+        }
+
         if (!scheduleTimePattern.test(startTime) || !scheduleTimePattern.test(endTime)) {
             return "Schedule times must use HH:mm.";
         }
 
         if (startTime >= endTime) {
-            return "Schedule start time must be before end time.";
+            return `${slot.dayOfWeek}: end time must be later than start time.`;
         }
     }
 

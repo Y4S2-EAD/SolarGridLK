@@ -17,27 +17,14 @@ const emptyForm = {
     password: "",
 };
 
-const tableColumns = ["NIC", "Full name", "Email", "Phone", "Status", "Actions"];
-
-const SkeletonRow = () => (
-    <tr className="border-b border-[#1c2942] last:border-0">
-        {Array.from({ length: tableColumns.length }).map((_, index) => (
-            <td key={index} className="px-5 py-4">
-                <div
-                    className="h-3.5 rounded bg-[#182338] animate-pulse"
-                    style={{ width: `${55 + index * 6}%` }}
-                />
-            </td>
-        ))}
-    </tr>
-);
-
 const actionButtonClass =
     "text-xs text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] rounded-md px-2.5 py-1.5 transition-colors";
 
 const ProsumerManagementPage = () => {
     const navigate = useNavigate();
     const submittingRef = useRef(false);
+    const lookupRef = useRef(false);
+    const nicFieldRef = useRef(null);
 
     const [nicInput, setNicInput] = useState("");
     const [searchedNic, setSearchedNic] = useState("");
@@ -56,15 +43,26 @@ const ProsumerManagementPage = () => {
     const lookupProsumer = async (nic) => {
         const trimmedNic = nic.trim();
 
-        if (!trimmedNic) {
-            setError("Enter a NIC to look up a prosumer.");
+        if (lookupRef.current) {
             return;
         }
+
+        if (!trimmedNic) {
+            setError("Enter a NIC to search for a prosumer.");
+            return;
+        }
+
+        lookupRef.current = true;
 
         try {
             setLoading(true);
             setError("");
             setNotFound(false);
+            setProsumer(null);
+
+            if (trimmedNic !== searchedNic) {
+                setSuccess("");
+            }
 
             const response = await getProsumerByNic(trimmedNic);
             setSearchedNic(trimmedNic);
@@ -78,30 +76,25 @@ const ProsumerManagementPage = () => {
         } catch (requestError) {
             console.error("Failed to load prosumer:", requestError);
             setSearchedNic(trimmedNic);
+            setProsumer(null);
 
             const status = requestError.response?.status;
 
             if (status === 404) {
-                setProsumer(null);
                 setNotFound(true);
                 setError("");
             } else if (status === 401) {
-                setProsumer(null);
                 setNotFound(false);
                 setError("Your session has expired. Please log in again.");
             } else if (status === 403) {
-                setProsumer(null);
                 setNotFound(false);
                 setError("You do not have permission to view prosumers.");
             } else {
-                setProsumer(null);
                 setNotFound(false);
-                setError(
-                    requestError.response?.data?.message ||
-                        "Unable to load the prosumer."
-                );
+                setError("The search could not be completed. Check the NIC and try again.");
             }
         } finally {
+            lookupRef.current = false;
             setLoading(false);
         }
     };
@@ -117,6 +110,25 @@ const ProsumerManagementPage = () => {
         }
 
         lookupProsumer(searchedNic);
+    };
+
+    const clearSearch = () => {
+        if (loading || saving || statusSaving) {
+            return;
+        }
+
+        setNicInput("");
+        setSearchedNic("");
+        setProsumer(null);
+        setNotFound(false);
+        setError("");
+        setSuccess("");
+        nicFieldRef.current?.focus();
+    };
+
+    const trySearchAgain = () => {
+        nicFieldRef.current?.focus();
+        nicFieldRef.current?.select();
     };
 
     const handleFormChange = (event) => {
@@ -328,8 +340,8 @@ const ProsumerManagementPage = () => {
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <h2 className="font-grotesk text-xl font-semibold">Prosumer Management</h2>
-                    <p className="text-sm text-[#7c8ba6] mt-1">
-                        Backoffice users manage prosumer accounts.
+                    <p className="text-sm text-[#7c8ba6] mt-1 max-w-xl">
+                        Search and manage registered prosumer accounts using their NIC.
                     </p>
                 </div>
 
@@ -372,196 +384,212 @@ const ProsumerManagementPage = () => {
                 </div>
             )}
 
-            <div className="bg-[#101a30] border border-[#1c2942] rounded-md overflow-hidden">
-                <div className="flex flex-col gap-4 px-5 py-4 border-b border-[#1c2942] lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <h3 className="font-grotesk text-sm font-semibold">Prosumers</h3>
-                        <p className="mt-1 text-xs text-[#7c8ba6]">
-                            {loading
-                                ? "Loading…"
-                                : prosumer
-                                ? "1 shown"
-                                : "0 shown"}
-                        </p>
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <form onSubmit={handleLookup} className="flex gap-2">
-                            <label className="min-w-0 sm:w-56">
-                                <span className="sr-only">Prosumer NIC</span>
-                                <input
-                                    type="search"
-                                    value={nicInput}
-                                    onChange={(event) => setNicInput(event.target.value)}
-                                    placeholder="Enter NIC"
-                                    disabled={loading}
-                                    className="w-full rounded-md border border-[#2a3a56] bg-[#0b1120] px-3 py-2 text-sm text-[#e7ecf5] placeholder:text-[#5c6b88] focus:border-[#f4a93b] focus:outline-none disabled:opacity-60"
-                                />
-                            </label>
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
-                            >
-                                Look up
-                            </button>
-                        </form>
+            <form
+                onSubmit={handleLookup}
+                className="bg-[#101a30] border border-[#1c2942] rounded-md px-5 py-4"
+            >
+                <label htmlFor="prosumer-nic-search" className="block text-sm text-[#a7b2c7] mb-1.5">
+                    NIC
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                        id="prosumer-nic-search"
+                        ref={nicFieldRef}
+                        type="search"
+                        value={nicInput}
+                        onChange={(event) => setNicInput(event.target.value)}
+                        placeholder="Enter NIC"
+                        disabled={loading}
+                        autoComplete="off"
+                        className="w-full min-w-0 sm:max-w-sm rounded-md border border-[#2a3a56] bg-[#0b1120] px-3 py-2 text-sm text-[#e7ecf5] placeholder:text-[#5c6b88] focus:border-[#f4a93b] focus:outline-none disabled:opacity-60"
+                    />
+                    <div className="flex flex-wrap gap-2">
                         <button
-                            type="button"
-                            onClick={handleRefresh}
-                            disabled={!searchedNic || loading}
-                            className="text-sm text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-3 py-2 transition-colors"
+                            type="submit"
+                            disabled={loading}
+                            className="inline-flex items-center justify-center gap-2 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] disabled:opacity-60 disabled:cursor-not-allowed text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
                         >
-                            Refresh
+                            {loading && (
+                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                                </svg>
+                            )}
+                            {loading ? "Searching…" : "Search Prosumer"}
                         </button>
+                        {(searchedNic || prosumer || notFound) && (
+                            <button
+                                type="button"
+                                onClick={clearSearch}
+                                disabled={loading || saving || statusSaving}
+                                className="text-sm text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-3 py-2 transition-colors"
+                            >
+                                Clear Search
+                            </button>
+                        )}
                     </div>
                 </div>
+                <p className="mt-2 text-xs text-[#7c8ba6]">
+                    Use the NIC registered with the prosumer account.
+                </p>
+            </form>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="text-left text-xs text-[#7c8ba6] border-b border-[#1c2942]">
-                                {tableColumns.map((column) => (
-                                    <th
-                                        key={column}
-                                        className={`font-normal px-5 py-3 ${
-                                            column === "Actions" ? "text-right" : ""
-                                        }`}
-                                    >
-                                        {column}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {loading && <SkeletonRow />}
-
-                            {!loading && !prosumer && !searchedNic && (
-                                <tr>
-                                    <td
-                                        colSpan={tableColumns.length}
-                                        className="px-5 py-12 text-center text-[#7c8ba6]"
-                                    >
-                                        <div className="mx-auto max-w-sm">
-                                            <p className="font-medium text-[#a7b2c7]">No prosumer loaded</p>
-                                            <p className="mt-1 text-xs">
-                                                Enter a NIC and look up the account. Nothing is listed until a match is found.
-                                            </p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-
-                            {!loading && !prosumer && notFound && (
-                                <tr>
-                                    <td
-                                        colSpan={tableColumns.length}
-                                        className="px-5 py-12 text-center text-[#7c8ba6]"
-                                    >
-                                        <div className="mx-auto max-w-sm">
-                                            <p className="font-medium text-[#a7b2c7]">No prosumer found</p>
-                                            <p className="mt-1 text-xs">
-                                                No account matches NIC {searchedNic}.
-                                            </p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-
-                            {!loading && !prosumer && searchedNic && !notFound && (
-                                <tr>
-                                    <td
-                                        colSpan={tableColumns.length}
-                                        className="px-5 py-12 text-center text-[#7c8ba6]"
-                                    >
-                                        The prosumer could not be loaded.
-                                    </td>
-                                </tr>
-                            )}
-
-                            {!loading && prosumer && (
-                                <tr className="border-b border-[#1c2942] last:border-0 hover:bg-[#132038] transition-colors">
-                                    <td className="px-5 py-3 font-medium">{prosumer.nic}</td>
-                                    <td className="px-5 py-3">{prosumer.fullName}</td>
-                                    <td className="px-5 py-3 text-[#a7b2c7]">{prosumer.email}</td>
-                                    <td className="px-5 py-3 text-[#a7b2c7]">{prosumer.phoneNumber}</td>
-                                    <td className="px-5 py-3">
-                                        <span
-                                            className={`inline-flex items-center gap-1.5 text-xs ${
-                                                isActive ? "text-emerald-400" : "text-[#5c6b88]"
-                                            }`}
-                                        >
-                                            <span
-                                                className={`w-1.5 h-1.5 rounded-full ${
-                                                    isActive ? "bg-emerald-400" : "bg-[#5c6b88]"
-                                                }`}
-                                            />
-                                            {prosumer.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-3">
-                                        <div className="flex items-center justify-end gap-1.5">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    navigate(
-                                                        `/backoffice/prosumers/${encodeURIComponent(prosumer.nic)}`
-                                                    )
-                                                }
-                                                className={actionButtonClass}
-                                            >
-                                                View
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    navigate(
-                                                        `/backoffice/prosumers/${encodeURIComponent(prosumer.nic)}`,
-                                                        { state: { openEdit: true } }
-                                                    )
-                                                }
-                                                disabled={!isActive}
-                                                title={
-                                                    isActive
-                                                        ? undefined
-                                                        : "A deactivated account cannot be updated."
-                                                }
-                                                className={`${actionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
-                                            >
-                                                Edit
-                                            </button>
-                                            {isActive && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setError("");
-                                                        setSuccess("");
-                                                        setIsDeactivateOpen(true);
-                                                    }}
-                                                    disabled={statusSaving || saving}
-                                                    className="text-xs text-red-300 hover:text-red-200 border border-red-900/40 hover:border-red-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1.5 transition-colors"
-                                                >
-                                                    Deactivate
-                                                </button>
-                                            )}
-                                            {isDeactivated && (
-                                                <button
-                                                    type="button"
-                                                    onClick={handleReactivate}
-                                                    disabled={statusSaving || saving}
-                                                    className="text-xs text-emerald-300 hover:text-emerald-200 border border-emerald-900/40 hover:border-emerald-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1.5 transition-colors"
-                                                >
-                                                    {statusSaving ? "Saving…" : "Reactivate"}
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+            {loading && (
+                <div
+                    className="bg-[#101a30] border border-[#1c2942] rounded-md px-5 py-10 text-center"
+                    aria-live="polite"
+                >
+                    <p className="text-sm text-[#a7b2c7]">Searching for prosumer...</p>
                 </div>
-            </div>
+            )}
+
+            {!loading && !prosumer && !searchedNic && (
+                <div className="bg-[#101a30] border border-[#1c2942] rounded-md px-5 py-12 text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#2a3a56] text-[#f4a93b]">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                            <circle cx="11" cy="11" r="6" />
+                            <path d="M16 16l4 4" strokeLinecap="round" />
+                            <circle cx="11" cy="10" r="2" />
+                        </svg>
+                    </div>
+                    <h3 className="mt-4 font-grotesk text-base font-semibold">Find a Prosumer</h3>
+                    <p className="mx-auto mt-2 max-w-md text-sm text-[#7c8ba6]">
+                        Enter a NIC above to view and manage the corresponding prosumer account.
+                    </p>
+                </div>
+            )}
+
+            {!loading && !prosumer && notFound && (
+                <div className="bg-[#101a30] border border-[#1c2942] rounded-md px-5 py-12 text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#2a3a56] text-[#7c8ba6]">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                            <circle cx="11" cy="11" r="6" />
+                            <path d="M16 16l4 4" strokeLinecap="round" />
+                        </svg>
+                    </div>
+                    <h3 className="mt-4 font-grotesk text-base font-semibold">Prosumer not found</h3>
+                    <p className="mx-auto mt-2 max-w-md text-sm text-[#7c8ba6]">
+                        No account was found for this NIC. Check the NIC and try again.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={trySearchAgain}
+                        className="mt-5 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
+                    >
+                        Try Again
+                    </button>
+                </div>
+            )}
+
+            {!loading && prosumer && (
+                <section className="bg-[#101a30] border border-[#1c2942] rounded-md overflow-hidden">
+                    <div className="flex flex-col gap-3 px-5 py-4 border-b border-[#1c2942] sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h3 className="font-grotesk text-sm font-semibold">Prosumer Profile</h3>
+                            <p className="mt-1 text-xs text-[#7c8ba6]">
+                                Account details for this NIC.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    navigate(
+                                        `/backoffice/prosumers/${encodeURIComponent(prosumer.nic)}`
+                                    )
+                                }
+                                className={actionButtonClass}
+                            >
+                                View
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    navigate(
+                                        `/backoffice/prosumers/${encodeURIComponent(prosumer.nic)}`,
+                                        { state: { openEdit: true } }
+                                    )
+                                }
+                                disabled={!isActive}
+                                title={
+                                    isActive
+                                        ? undefined
+                                        : "A deactivated account cannot be updated."
+                                }
+                                className={`${actionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                                Edit
+                            </button>
+                            {isActive && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setError("");
+                                        setSuccess("");
+                                        setIsDeactivateOpen(true);
+                                    }}
+                                    disabled={statusSaving || saving}
+                                    className="text-xs text-red-300 hover:text-red-200 border border-red-900/40 hover:border-red-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1.5 transition-colors"
+                                >
+                                    Deactivate
+                                </button>
+                            )}
+                            {isDeactivated && (
+                                <button
+                                    type="button"
+                                    onClick={handleReactivate}
+                                    disabled={statusSaving || saving}
+                                    className="text-xs text-emerald-300 hover:text-emerald-200 border border-emerald-900/40 hover:border-emerald-700/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1.5 transition-colors"
+                                >
+                                    {statusSaving ? "Saving…" : "Reactivate"}
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleRefresh}
+                                disabled={loading || saving || statusSaving}
+                                className={actionButtonClass}
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <dl className="divide-y divide-[#1c2942]">
+                        {[
+                            ["NIC", prosumer.nic],
+                            ["Full Name", prosumer.fullName],
+                            ["Email", prosumer.email],
+                            ["Phone", prosumer.phoneNumber],
+                            ["Address", prosumer.address],
+                        ].map(([label, value]) => (
+                            <div
+                                key={label}
+                                className="grid grid-cols-1 gap-1 px-5 py-3 sm:grid-cols-[180px_1fr] sm:gap-4"
+                            >
+                                <dt className="text-xs text-[#7c8ba6]">{label}</dt>
+                                <dd className="text-sm break-words">{value || "—"}</dd>
+                            </div>
+                        ))}
+                        <div className="grid grid-cols-1 gap-1 px-5 py-3 sm:grid-cols-[180px_1fr] sm:gap-4">
+                            <dt className="text-xs text-[#7c8ba6]">Status</dt>
+                            <dd>
+                                <span
+                                    className={`inline-flex items-center gap-1.5 text-xs ${
+                                        isActive ? "text-emerald-400" : "text-[#5c6b88]"
+                                    }`}
+                                >
+                                    <span
+                                        className={`w-1.5 h-1.5 rounded-full ${
+                                            isActive ? "bg-emerald-400" : "bg-[#5c6b88]"
+                                        }`}
+                                    />
+                                    {prosumer.status}
+                                </span>
+                            </dd>
+                        </div>
+                    </dl>
+                </section>
+            )}
 
             {isFormOpen && (
                 <>

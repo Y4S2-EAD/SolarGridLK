@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { deactivateNode, getNodeById, nodeDeactivateErrorText, updateNodeSchedule } from "../api/nodeApi";
 import NodeFormPanel from "./NodeFormPanel";
-import { buildScheduleForm, scheduleFieldError, toSchedulePayload } from "./nodeValidation";
+import { buildScheduleForm, gridOperatorLabel, scheduleFieldError, toSchedulePayload } from "./nodeValidation";
 
 const displayValue = (value) => (value || value === 0 ? value : "—");
 
@@ -135,7 +135,6 @@ const NodeDetailsPage = () => {
     }, [loading, node]);
 
     const isActive = node?.status === "Active";
-    const schedule = Array.isArray(node?.schedule) ? node.schedule : [];
     const nextScheduleSource = JSON.stringify(node?.schedule ?? null);
 
     if (node && scheduleSource !== nextScheduleSource) {
@@ -278,6 +277,7 @@ const NodeDetailsPage = () => {
               { label: "Node ID", value: node.nodeId },
               { label: "Name", value: displayValue(node.name) },
               { label: "Location", value: displayValue(node.location) },
+              { label: "Grid Operator", value: gridOperatorLabel(node) },
               { label: "Latitude", value: displayValue(node.latitude) },
               { label: "Longitude", value: displayValue(node.longitude) },
               { label: "Capacity", value: `${displayValue(node.capacityKw)} kW` },
@@ -437,15 +437,13 @@ const NodeDetailsPage = () => {
                     onSubmit={handleSaveSchedule}
                     className="bg-[#101a30] border border-[#1c2942] rounded-md overflow-hidden"
                 >
-                    <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-[#1c2942]">
-                        <div>
-                            <h3 className="font-grotesk text-sm font-semibold">Schedule</h3>
-                            <p className="mt-1 text-xs text-[#7c8ba6]">
-                                {schedule.length === 0
-                                    ? "No schedule is saved yet."
-                                    : `${schedule.length} day${schedule.length === 1 ? "" : "s"} saved.`}
+                    <div className="flex flex-col gap-3 px-5 py-4 border-b border-[#1c2942] sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                            <h3 className="font-grotesk text-sm font-semibold">Operational Schedule</h3>
+                            <p className="mt-1 text-xs text-[#7c8ba6] max-w-xl">
+                                Set the daily operating window for this microgrid node. Operators can view this schedule when monitoring the node.
                                 {" "}
-                                Saving replaces the full schedule. Leave a day blank to leave it out.
+                                Leave a day blank if the node is closed that day.
                             </p>
                         </div>
                         <button
@@ -464,7 +462,7 @@ const NodeDetailsPage = () => {
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
                                 </svg>
                             )}
-                            {scheduleSaving ? "Saving…" : "Update schedule"}
+                            {scheduleSaving ? "Saving…" : "Update Schedule"}
                         </button>
                     </div>
 
@@ -478,13 +476,20 @@ const NodeDetailsPage = () => {
                         {scheduleSlots.map((slot) => (
                             <div
                                 key={slot.dayOfWeek}
-                                className="grid grid-cols-1 gap-3 px-5 py-3 sm:grid-cols-[140px_1fr_1fr] sm:items-center"
+                                className="grid grid-cols-1 gap-3 px-5 py-3 sm:grid-cols-[8.5rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center"
                             >
                                 <div className="text-sm font-medium">{slot.dayOfWeek}</div>
-                                <label className="block">
-                                    <span className="mb-1.5 block text-xs text-[#7c8ba6]">Start</span>
+                                <label className="block min-w-0">
+                                    <span className="mb-1.5 flex items-center gap-1.5 text-xs text-[#7c8ba6]">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                            <circle cx="12" cy="12" r="8" />
+                                            <path d="M12 8v4l2.5 1.5" strokeLinecap="round" />
+                                        </svg>
+                                        Start Time
+                                    </span>
                                     <input
                                         type="time"
+                                        step="60"
                                         value={slot.startTime}
                                         onChange={(event) =>
                                             updateScheduleSlot(
@@ -494,13 +499,21 @@ const NodeDetailsPage = () => {
                                             )
                                         }
                                         disabled={!isActive || scheduleSaving || deactivating}
-                                        className="w-full box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label={`${slot.dayOfWeek} start time`}
+                                        className="w-full min-w-0 box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed [color-scheme:dark]"
                                     />
                                 </label>
-                                <label className="block">
-                                    <span className="mb-1.5 block text-xs text-[#7c8ba6]">End</span>
+                                <label className="block min-w-0">
+                                    <span className="mb-1.5 flex items-center gap-1.5 text-xs text-[#7c8ba6]">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                            <circle cx="12" cy="12" r="8" />
+                                            <path d="M12 8v4l2.5 1.5" strokeLinecap="round" />
+                                        </svg>
+                                        End Time
+                                    </span>
                                     <input
                                         type="time"
+                                        step="60"
                                         value={slot.endTime}
                                         onChange={(event) =>
                                             updateScheduleSlot(
@@ -510,7 +523,8 @@ const NodeDetailsPage = () => {
                                             )
                                         }
                                         disabled={!isActive || scheduleSaving || deactivating}
-                                        className="w-full box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label={`${slot.dayOfWeek} end time`}
+                                        className="w-full min-w-0 box-border px-3 py-2 bg-[#0b1120] border border-[#2a3a56] rounded-md text-[#e7ecf5] text-sm focus:outline-none focus:border-[#f4a93b] disabled:opacity-50 disabled:cursor-not-allowed [color-scheme:dark]"
                                     />
                                 </label>
                             </div>

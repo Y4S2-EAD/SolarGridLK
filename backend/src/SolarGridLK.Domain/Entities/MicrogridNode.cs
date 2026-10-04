@@ -28,6 +28,9 @@ public class MicrogridNode
 
     public NodeStatus Status { get; set; } = NodeStatus.Active;
 
+    // Null on nodes created before Grid Operator assignment existed.
+    public string? AssignedGridOperatorId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime LastModifiedAt { get; set; } = DateTime.UtcNow;

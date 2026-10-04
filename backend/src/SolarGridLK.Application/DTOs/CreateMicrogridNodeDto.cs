@@ -16,5 +16,7 @@ public class CreateMicrogridNodeDto
 
     public int AvailableBatterySlots { get; set; }
 
+    public string AssignedGridOperatorId { get; set; } = string.Empty;
+
     public List<NodeScheduleSlotDto> Schedule { get; set; } = new();
 }

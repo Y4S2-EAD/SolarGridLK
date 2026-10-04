@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createNode, updateNode } from "../api/nodeApi";
-import { inputClassName, nodeFieldError, toNodePayload } from "./nodeValidation";
+import { getUsers } from "../api/userApi";
+import { inputClassName, nodeFieldError, sriLankanDistricts, toNodePayload } from "./nodeValidation";
 
 const emptyForm = {
     nodeId: "",
@@ -10,19 +11,28 @@ const emptyForm = {
     longitude: "",
     capacityKw: "",
     availableBatterySlots: "",
+    assignedGridOperatorId: "",
 };
 
 const textValue = (value) => (value || value === 0 ? String(value) : "");
 
-const formFromNode = (node) => ({
-    nodeId: node?.nodeId || "",
-    name: node?.name || "",
-    location: node?.location || "",
-    latitude: textValue(node?.latitude),
-    longitude: textValue(node?.longitude),
-    capacityKw: textValue(node?.capacityKw),
-    availableBatterySlots: textValue(node?.availableBatterySlots),
-});
+const formFromNode = (node) => {
+    const storedLocation = node?.location || "";
+    const matchedDistrict = sriLankanDistricts.find(
+        (district) => district.toLowerCase() === storedLocation.trim().toLowerCase()
+    );
+
+    return {
+        nodeId: node?.nodeId || "",
+        name: node?.name || "",
+        location: matchedDistrict || storedLocation,
+        latitude: textValue(node?.latitude),
+        longitude: textValue(node?.longitude),
+        capacityKw: textValue(node?.capacityKw),
+        availableBatterySlots: textValue(node?.availableBatterySlots),
+        assignedGridOperatorId: node?.assignedGridOperatorId || "",
+    };
+};
 
 const messageFromError = (requestError, fallback) => {
     const status = requestError.response?.status;
@@ -52,10 +62,77 @@ const NodeFormPanel = ({ mode, node, isOpen, onClose, onCompleted }) => {
     const [formData, setFormData] = useState(() => (isEdit ? formFromNode(node) : emptyForm));
     const [error, setError] = useState("");
     const [saving, setSaving] = useState(false);
+    const [operators, setOperators] = useState([]);
+    const [operatorsLoading, setOperatorsLoading] = useState(true);
+    const [operatorsError, setOperatorsError] = useState("");
+
+    useEffect(() => {
+        if (!isOpen) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        const loadOperators = async () => {
+            try {
+                setOperatorsLoading(true);
+                setOperatorsError("");
+                const response = await getUsers();
+
+                if (cancelled) {
+                    return;
+                }
+
+                if (!response.success) {
+                    setOperators([]);
+                    setOperatorsError(response.message || "Unable to load Grid Operators.");
+                    return;
+                }
+
+                const gridOperators = (response.data || [])
+                    .filter((user) => user.role === "GridOperator")
+                    .sort((left, right) =>
+                        (left.fullName || left.username || "").localeCompare(
+                            right.fullName || right.username || ""
+                        )
+                    );
+
+                setOperators(gridOperators);
+            } catch (requestError) {
+                if (cancelled) {
+                    return;
+                }
+
+                setOperators([]);
+                setOperatorsError(
+                    requestError.response?.data?.message || "Unable to load Grid Operators."
+                );
+            } finally {
+                if (!cancelled) {
+                    setOperatorsLoading(false);
+                }
+            }
+        };
+
+        loadOperators();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen]);
 
     if (!isOpen) {
         return null;
     }
+
+    const operatorLabel = (operator) => {
+        const name = operator.fullName || operator.username || "Grid Operator";
+        return operator.isActive ? name : `${name} (inactive)`;
+    };
+
+    const selectedOperatorMissing =
+        formData.assignedGridOperatorId &&
+        !operators.some((operator) => operator.id === formData.assignedGridOperatorId);
 
     const closePanel = () => {
         if (saving) {
@@ -188,18 +265,66 @@ const NodeFormPanel = ({ mode, node, isOpen, onClose, onCompleted }) => {
 
                     <div>
                         <label htmlFor="location" className="block text-sm text-[#a7b2c7] mb-1.5">
-                            Location
+                            Location / District
                         </label>
-                        <input
+                        <select
                             id="location"
                             name="location"
-                            type="text"
                             value={formData.location}
                             onChange={handleChange}
                             disabled={saving}
-                            required
                             className={inputClassName}
-                        />
+                        >
+                            <option value="">Select District</option>
+                            {formData.location.trim() &&
+                                !sriLankanDistricts.includes(formData.location.trim()) && (
+                                    <option value={formData.location}>{formData.location}</option>
+                                )}
+                            {sriLankanDistricts.map((district) => (
+                                <option key={district} value={district}>
+                                    {district}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1.5 text-xs text-[#7c8ba6]">
+                            Select the Sri Lankan district where this microgrid node is located.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label htmlFor="assignedGridOperatorId" className="block text-sm text-[#a7b2c7] mb-1.5">
+                            Grid Operator
+                        </label>
+                        <select
+                            id="assignedGridOperatorId"
+                            name="assignedGridOperatorId"
+                            value={formData.assignedGridOperatorId}
+                            onChange={handleChange}
+                            disabled={saving || operatorsLoading}
+                            className={inputClassName}
+                        >
+                            <option value="">
+                                {operatorsLoading ? "Loading Grid Operators…" : "Select Grid Operator"}
+                            </option>
+                            {selectedOperatorMissing && (
+                                <option value={formData.assignedGridOperatorId}>
+                                    {node?.assignedGridOperatorName || "Assigned Grid Operator"}
+                                </option>
+                            )}
+                            {operators.map((operator) => (
+                                <option key={operator.id} value={operator.id}>
+                                    {operatorLabel(operator)}
+                                </option>
+                            ))}
+                        </select>
+                        <p className={`mt-1.5 text-xs ${operatorsError ? "text-red-300" : "text-[#7c8ba6]"}`}>
+                            {operatorsError ||
+                                (operatorsLoading
+                                    ? "Loading registered Grid Operators."
+                                    : operators.length === 0
+                                      ? "No Grid Operators are registered. Create a Grid Operator user first."
+                                      : "Select the Grid Operator responsible for this node.")}
+                        </p>
                     </div>
 
                     <div>

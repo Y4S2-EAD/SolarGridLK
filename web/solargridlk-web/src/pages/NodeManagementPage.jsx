@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { deactivateNode, getNodes, nodeDeactivateErrorText } from "../api/nodeApi";
 import NodeFormPanel from "./NodeFormPanel";
+import { gridOperatorLabel } from "./nodeValidation";
 
-const tableColumns = ["Node ID", "Name", "Location", "Capacity", "Battery slots", "Status", "Actions"];
+const tableColumns = ["Node ID", "Name", "Location", "Grid Operator", "Capacity", "Battery slots", "Status", "Actions"];
 
 const actionButtonClass =
     "text-xs text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] rounded-md px-2.5 py-1.5 transition-colors";
@@ -134,8 +135,8 @@ const NodeManagementPage = () => {
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <h2 className="font-grotesk text-xl font-semibold">Microgrid Node Management</h2>
-                    <p className="text-sm text-[#7c8ba6] mt-1">
-                        Backoffice users manage microgrid nodes.
+                    <p className="text-sm text-[#7c8ba6] mt-1 max-w-xl">
+                        Register and manage solar microgrid nodes and maintain their operational schedules.
                     </p>
                 </div>
 
@@ -252,6 +253,7 @@ const NodeManagementPage = () => {
                                             <td className="px-5 py-3 font-medium">{node.nodeId}</td>
                                             <td className="px-5 py-3">{node.name}</td>
                                             <td className="px-5 py-3 text-[#a7b2c7]">{node.location}</td>
+                                            <td className="px-5 py-3 text-[#a7b2c7]">{gridOperatorLabel(node)}</td>
                                             <td className="px-5 py-3">{node.capacityKw} kW</td>
                                             <td className="px-5 py-3">{node.availableBatterySlots}</td>
                                             <td className="px-5 py-3">
@@ -300,7 +302,7 @@ const NodeManagementPage = () => {
                                                     >
                                                         Edit
                                                     </button>
-                                                    <button
+                                                    {/* <button
                                                         type="button"
                                                         onClick={() =>
                                                             navigate(
@@ -311,7 +313,7 @@ const NodeManagementPage = () => {
                                                         className={`${actionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
                                                     >
                                                         Schedule
-                                                    </button>
+                                                    </button> */}
                                                     {isActive && (
                                                         <button
                                                             type="button"

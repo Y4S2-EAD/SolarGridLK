@@ -91,7 +91,7 @@ class NodeOperationsActivity : AppCompatActivity() {
     }
 
     private fun loadNodes() {
-        // Fetch nodes and keep the server list as the source of truth.
+        // Fetch nodes assigned to this operator. The API filters using the JWT.
         progressBar.visibility = View.VISIBLE
         errorText.visibility = View.GONE
         retryButton.visibility = View.GONE

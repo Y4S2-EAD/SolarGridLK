@@ -1,6 +1,7 @@
-/*Description: Implements microgrid node creation, updates, schedules, deactivation, and battery-slot availability.*/
+/*Description: Implements microgrid node creation, updates, schedules, deactivation, battery-slot availability, and Grid Operator assignment.*/
 
 using System.Globalization;
+using MongoDB.Bson;
 using SolarGridLK.Application.DTOs;
 using SolarGridLK.Application.Interfaces;
 using SolarGridLK.Domain.Entities;
@@ -10,6 +11,8 @@ namespace SolarGridLK.Infrastructure.Services;
 
 public class MicrogridNodeService : IMicrogridNodeService
 {
+    public const string GridOperatorNotFoundMessage = "Grid Operator not found.";
+
     private static readonly string[] DaysOfWeek =
     {
         "Monday",
@@ -23,14 +26,17 @@ public class MicrogridNodeService : IMicrogridNodeService
 
     private readonly IMicrogridNodeRepository _nodeRepository;
     private readonly IReservationRepository _reservationRepository;
+    private readonly IUserRepository _userRepository;
 
     public MicrogridNodeService(
         IMicrogridNodeRepository nodeRepository,
-        IReservationRepository reservationRepository)
+        IReservationRepository reservationRepository,
+        IUserRepository userRepository)
     {
-        // Store the node repository and the existing reservation lookup.
+        // Store the node repository, the existing reservation lookup, and staff user lookup.
         _nodeRepository = nodeRepository;
         _reservationRepository = reservationRepository;
+        _userRepository = userRepository;
     }
 
     public async Task<MicrogridNodeDto> CreateAsync(CreateMicrogridNodeDto request)
@@ -61,6 +67,10 @@ public class MicrogridNodeService : IMicrogridNodeService
             throw new InvalidOperationException("Node ID already exists.");
         }
 
+        var assignedGridOperatorId = await ResolveGridOperatorIdAsync(
+            request.AssignedGridOperatorId,
+            required: true);
+
         var now = DateTime.UtcNow;
         var node = new MicrogridNode
         {
@@ -73,30 +83,48 @@ public class MicrogridNodeService : IMicrogridNodeService
             AvailableBatterySlots = request.AvailableBatterySlots,
             Schedule = schedule,
             Status = NodeStatus.Active,
+            AssignedGridOperatorId = assignedGridOperatorId,
             CreatedAt = now,
             LastModifiedAt = now
         };
 
         await _nodeRepository.CreateAsync(node);
 
-        return MapToDto(node);
+        return await ToDtoAsync(node);
     }
 
-    public async Task<List<MicrogridNodeDto>> GetAllAsync()
+    public async Task<List<MicrogridNodeDto>> GetAllAsync(
+        string? callerRole = null,
+        string? callerUserId = null)
     {
-        // Return every microgrid node as a client-safe DTO.
+        // Return every node, or only the caller's assigned nodes for a Grid Operator.
         var nodes = await _nodeRepository.GetAllAsync();
 
-        return nodes.Select(MapToDto).ToList();
+        if (IsGridOperator(callerRole))
+        {
+            nodes = nodes
+                .Where(node => IsAssignedTo(node, callerUserId))
+                .ToList();
+        }
+
+        return await ToDtoListAsync(nodes);
     }
 
-    public async Task<MicrogridNodeDto?> GetByNodeIdAsync(string nodeId)
+    public async Task<MicrogridNodeDto?> GetByNodeIdAsync(
+        string nodeId,
+        string? callerRole = null,
+        string? callerUserId = null)
     {
-        // Return one node, or null when the public node id does not exist.
+        // Return one node, or null when it does not exist or is hidden from this Grid Operator.
         var node = await _nodeRepository.GetByNodeIdAsync(
             NormalizeNodeId(nodeId));
 
-        return node == null ? null : MapToDto(node);
+        if (node == null || !CanAccess(node, callerRole, callerUserId))
+        {
+            return null;
+        }
+
+        return await ToDtoAsync(node);
     }
 
     public async Task<MicrogridNodeDto?> UpdateAsync(
@@ -149,11 +177,18 @@ public class MicrogridNodeService : IMicrogridNodeService
             node.AvailableBatterySlots = request.AvailableBatterySlots.Value;
         }
 
+        if (request.AssignedGridOperatorId != null)
+        {
+            node.AssignedGridOperatorId = await ResolveGridOperatorIdAsync(
+                request.AssignedGridOperatorId,
+                required: true);
+        }
+
         node.LastModifiedAt = DateTime.UtcNow;
 
         await _nodeRepository.UpdateAsync(node);
 
-        return MapToDto(node);
+        return await ToDtoAsync(node);
     }
 
     public async Task<MicrogridNodeDto?> UpdateScheduleAsync(
@@ -180,7 +215,7 @@ public class MicrogridNodeService : IMicrogridNodeService
 
         await _nodeRepository.UpdateAsync(node);
 
-        return MapToDto(node);
+        return await ToDtoAsync(node);
     }
 
     public async Task<MicrogridNodeDto?> DeactivateAsync(string nodeId)
@@ -214,7 +249,7 @@ public class MicrogridNodeService : IMicrogridNodeService
 
         await _nodeRepository.UpdateAsync(node);
 
-        return MapToDto(node);
+        return await ToDtoAsync(node);
     }
 
     public async Task<List<AvailableSlotDto>> GetAvailableSlotsAsync(string nodeId, DateTime date, int slotMinutes = 30)
@@ -268,7 +303,9 @@ public class MicrogridNodeService : IMicrogridNodeService
 
     public async Task<MicrogridNodeDto?> UpdateBatterySlotsAsync(
         string nodeId,
-        UpdateBatterySlotsDto request)
+        UpdateBatterySlotsDto request,
+        string? callerRole = null,
+        string? callerUserId = null)
     {
         // Change only available battery slots. Identity, location, capacity, and schedule stay as stored.
         if (request == null || !request.AvailableBatterySlots.HasValue)
@@ -282,7 +319,7 @@ public class MicrogridNodeService : IMicrogridNodeService
         var node = await _nodeRepository.GetByNodeIdAsync(
             NormalizeNodeId(nodeId));
 
-        if (node == null)
+        if (node == null || !CanAccess(node, callerRole, callerUserId))
         {
             return null;
         }
@@ -298,7 +335,7 @@ public class MicrogridNodeService : IMicrogridNodeService
 
         await _nodeRepository.UpdateAsync(node);
 
-        return MapToDto(node);
+        return await ToDtoAsync(node);
     }
 
     public async Task<List<AvailableSlotDto>> GetAvailableSlotsExcludingReservationAsync(string nodeId, DateTime date, string excludeReservationId, int slotMinutes = 30)
@@ -465,6 +502,131 @@ public class MicrogridNodeService : IMicrogridNodeService
             out time);
     }
 
+    private async Task<string> ResolveGridOperatorIdAsync(
+        string? assignedGridOperatorId,
+        bool required)
+    {
+        // Require a registered Grid Operator and reject any other role.
+        if (string.IsNullOrWhiteSpace(assignedGridOperatorId))
+        {
+            if (required)
+            {
+                throw new InvalidOperationException("Grid Operator is required.");
+            }
+
+            return string.Empty;
+        }
+
+        var operatorId = assignedGridOperatorId.Trim();
+
+        if (!ObjectId.TryParse(operatorId, out _))
+        {
+            throw new InvalidOperationException(GridOperatorNotFoundMessage);
+        }
+
+        var user = await _userRepository.GetByIdAsync(operatorId);
+
+        if (user == null)
+        {
+            throw new InvalidOperationException(GridOperatorNotFoundMessage);
+        }
+
+        if (user.Role != UserRole.GridOperator)
+        {
+            throw new InvalidOperationException(
+                "Selected user is not a Grid Operator.");
+        }
+
+        return user.Id;
+    }
+
+    private static bool IsGridOperator(string? callerRole)
+    {
+        // Match the staff role stored in the JWT.
+        return string.Equals(
+            callerRole,
+            nameof(UserRole.GridOperator),
+            StringComparison.Ordinal);
+    }
+
+    private static bool IsAssignedTo(MicrogridNode node, string? callerUserId)
+    {
+        // Unassigned nodes are not visible to any Grid Operator.
+        return !string.IsNullOrWhiteSpace(callerUserId)
+            && !string.IsNullOrWhiteSpace(node.AssignedGridOperatorId)
+            && string.Equals(
+                node.AssignedGridOperatorId,
+                callerUserId,
+                StringComparison.Ordinal);
+    }
+
+    private static bool CanAccess(
+        MicrogridNode node,
+        string? callerRole,
+        string? callerUserId)
+    {
+        // Backoffice and Prosumer keep existing access. Grid Operators are limited to assignments.
+        if (!IsGridOperator(callerRole))
+        {
+            return true;
+        }
+
+        return IsAssignedTo(node, callerUserId);
+    }
+
+    private async Task<List<MicrogridNodeDto>> ToDtoListAsync(List<MicrogridNode> nodes)
+    {
+        // Resolve operator display names once for the whole list.
+        var users = await _userRepository.GetAllAsync();
+        var names = users.ToDictionary(
+            user => user.Id,
+            user => string.IsNullOrWhiteSpace(user.FullName)
+                ? user.Username
+                : user.FullName.Trim());
+
+        return nodes.Select(node =>
+        {
+            var dto = MapToDto(node);
+
+            if (!string.IsNullOrWhiteSpace(node.AssignedGridOperatorId) &&
+                names.TryGetValue(node.AssignedGridOperatorId, out var name))
+            {
+                dto.AssignedGridOperatorName = name;
+            }
+
+            return dto;
+        }).ToList();
+    }
+
+    private async Task<MicrogridNodeDto> ToDtoAsync(MicrogridNode node)
+    {
+        // Convert one node and attach the assigned operator's display name when it can be resolved.
+        var dto = MapToDto(node);
+        dto.AssignedGridOperatorName = await ResolveOperatorNameAsync(
+            node.AssignedGridOperatorId);
+        return dto;
+    }
+
+    private async Task<string?> ResolveOperatorNameAsync(string? operatorId)
+    {
+        // Leave the name empty when the assignment is missing or the user record is gone.
+        if (string.IsNullOrWhiteSpace(operatorId) || !ObjectId.TryParse(operatorId, out _))
+        {
+            return null;
+        }
+
+        var user = await _userRepository.GetByIdAsync(operatorId);
+
+        if (user == null)
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(user.FullName)
+            ? user.Username
+            : user.FullName.Trim();
+    }
+
     private static MicrogridNodeDto MapToDto(MicrogridNode node)
     {
         // Convert a microgrid node entity into a client-safe DTO.
@@ -484,6 +646,7 @@ public class MicrogridNodeService : IMicrogridNodeService
                 EndTime = window.EndTime
             }).ToList(),
             Status = node.Status.ToString(),
+            AssignedGridOperatorId = node.AssignedGridOperatorId,
             CreatedAt = node.CreatedAt,
             LastModifiedAt = node.LastModifiedAt
         };
