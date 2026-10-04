@@ -41,10 +41,16 @@ public class ReservationService : IReservationService
         }
         //The requested time must exactly match one of this node's generated, available slots
         var slots = await _nodeService.GetAvailableSlotsAsync(request.NodeId.Trim(), request.SlotDateTime.Date);
-        var match = slots.FirstOrDefault(s => s.Start == request.SlotDateTime);
-        if (match == null || !match.IsAvailable)
+        var match = slots.FirstOrDefault(s => Math.Abs((s.Start - request.SlotDateTime).TotalMinutes) < 1);
+        if (match == null)
         {
             throw new InvalidOperationException("Slot not available.");
+        }
+        if (!match.IsAvailable)
+        {
+            // Return a more specific error when the slot is already reserved
+            throw new InvalidOperationException(match.ReservationStatus == "Pending" || match.ReservationStatus == "Approved"
+                ? "Slot already reserved." : "Slot not available.");
         }
 
         var reservation = new Reservation
@@ -80,9 +86,18 @@ public class ReservationService : IReservationService
         return reservation == null ? null : MapToDto(reservation);
     }
     
-    public async Task<List<ReservationDto>> GetReservationAsync(string? prosumerNic, string? status, string? search)
+    public async Task<List<ReservationDto>> GetReservationAsync(string? prosumerNic, string? status, string? search, string? callerRole = null, string? callerUserId = null)
     {
         var reservations = await _reservationRepository.GetAllAsync();
+        // If caller is a Grid Operator, limit to reservations for nodes assigned to them
+        if (!string.IsNullOrWhiteSpace(callerRole) && string.Equals(callerRole, "GridOperator", StringComparison.Ordinal))
+        {
+            // Filter reservations to those whose NodeId belongs to a node assigned to this operator
+            // We need IMicrogridNodeService to resolve node assignments; call repository through node service
+            var allNodes = await _nodeService.GetAllAsync(callerRole, callerUserId);
+            var assignedNodeIds = new HashSet<string>(allNodes.Select(n => n.NodeId));
+            reservations = reservations.Where(r => assignedNodeIds.Contains(r.NodeId)).ToList();
+        }
         // Filter by prosumer NIC if provided
         if (!string.IsNullOrWhiteSpace(prosumerNic))
         {

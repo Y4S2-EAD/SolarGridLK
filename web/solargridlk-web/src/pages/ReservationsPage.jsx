@@ -30,6 +30,19 @@ const statusStyles = {
 const shortenToken = (token = "") =>
     token.length > 16 ? `${token.slice(0, 8)}...${token.slice(-5)}` : token;
 
+// Client-side helpers to mirror backend reservation rules
+const isWithinNextDays = (date, days) => {
+    if (!date) return false;
+    const now = Date.now();
+    return date.getTime() >= now && date.getTime() <= now + days * 24 * 60 * 60 * 1000;
+};
+
+const hasAtLeastHours = (date, hours) => {
+    if (!date) return false;
+    const now = Date.now();
+    return date.getTime() - now >= hours * 60 * 60 * 1000;
+};
+
 const ReservationsPage = () => {
     const { user } = useAuth();
     const canManageReservations = user?.role === "GridOperator";
@@ -80,6 +93,7 @@ const ReservationsPage = () => {
                 if (cancelled) return;
 
                 if (response.success) {
+                    // For GridOperator users the nodes API returns only assigned nodes.
                     setNodes(response.data || []);
                 }
             } catch (err) {
@@ -94,7 +108,13 @@ const ReservationsPage = () => {
         };
     }, []);
 
-    const filteredReservations = reservations.filter((reservation) => {
+    const assignedNodeIds = new Set((nodes || []).map((node) => node.nodeId));
+    const scopedReservations =
+        user?.role === "GridOperator"
+            ? reservations.filter((reservation) => assignedNodeIds.has(reservation.nodeId))
+            : reservations;
+
+    const filteredReservations = scopedReservations.filter((reservation) => {
         const searchValue = searchTerm.trim().toLowerCase();
         const matchesSearch = !searchValue || [
             reservation.prosumerNic,
@@ -107,10 +127,11 @@ const ReservationsPage = () => {
     });
 
     const reservationCounts = {
-        total: reservations.length,
-        pending: reservations.filter(({ status }) => status === "Pending").length,
-        approved: reservations.filter(({ status }) => status === "Approved").length,
-        cancelled: reservations.filter(({ status }) => status === "Cancelled").length,
+        total: scopedReservations.length,
+        pending: scopedReservations.filter(({ status }) => status === "Pending").length,
+        approved: scopedReservations.filter(({ status }) => status === "Approved").length,
+        completed: scopedReservations.filter(({ status }) => status === "Completed").length,
+        cancelled: scopedReservations.filter(({ status }) => status === "Cancelled").length,
     };
 
     const handleChange = (event) => {
@@ -131,16 +152,10 @@ const ReservationsPage = () => {
     };
 
     const openCreateForm = () => {
-        setFormData(emptyForm);
-        setEditingReservationId(null);
-        setPickerValue(null);
-        setError("");
+        // Creation of reservations is performed by prosumers via the mobile app.
+        // Web/backoffice does not support creating new reservations.
+        setError("Reservations must be created by prosumers via the mobile app.");
         setSuccess("");
-        // If the logged-in user is a prosumer, prefill the NIC
-        if (user?.role === "Prosumer" && user?.username) {
-            setFormData((prev) => ({ ...prev, prosumerNic: user.username }));
-        }
-        setIsFormOpen(true);
     };
 
     const openEditForm = (reservation) => {
@@ -173,18 +188,27 @@ const ReservationsPage = () => {
 
         try {
             const slotDateTime = `${formData.slotDate}T${formData.slotTime}`;
+            const slotDateObj = new Date(slotDateTime);
+
+            if (!editingReservationId && !isWithinNextDays(slotDateObj, 7)) {
+                setError("Reservations must be scheduled within the next 7 days.");
+                return;
+            }
+
             const response = editingReservationId
                 ? await updateReservation(editingReservationId, {
-                    slotDateTime: new Date(slotDateTime).toISOString(),
+                    nodeId: formData.nodeId,
+                    slotDateTime: slotDateObj.toISOString(),
                 })
                 : await createReservation({
                     prosumerNic: formData.prosumerNic,
                     nodeId: formData.nodeId,
-                    slotDateTime: new Date(slotDateTime).toISOString(),
+                    slotDateTime: slotDateObj.toISOString(),
                 });
 
             if (!response.success) {
-                setError(response.message || "Unable to save reservation.");
+                // Surface server message when available, otherwise a clearer default
+                setError(response.message || "Unable to save reservation. Server rejected the request.");
                 return;
             }
 
@@ -197,7 +221,7 @@ const ReservationsPage = () => {
             await loadReservations();
         } catch (error) {
             console.error("Reservation save failed:", error);
-            setError(error.response?.data?.message || "Unable to save reservation.");
+            setError(error.response?.data?.message || "Unable to save reservation. Check the slot is still available and your input is valid.");
         } finally {
             setSaving(false);
         }
@@ -247,10 +271,15 @@ const ReservationsPage = () => {
         setError("");
         setSuccess("");
 
-        const response =
-            action === "approve"
-                ? await approveReservation(reservation.id)
-                : await cancelReservation(reservation.id);
+        // Client-side guard: updates/cancels require at least 12 hours notice
+        const slotDate = reservation.slotDateTime ? new Date(reservation.slotDateTime) : null;
+        if (action !== "approve" && !hasAtLeastHours(slotDate, 12)) {
+            setError("Updates and cancellations must be made at least 12 hours before the reserved slot.");
+            setActionId(null);
+            return;
+        }
+
+        const response = action === "approve" ? await approveReservation(reservation.id) : await cancelReservation(reservation.id);
 
         if (!response.success) {
             setError(response.message || "Reservation action failed.");
@@ -286,18 +315,8 @@ const ReservationsPage = () => {
                     </p>
                 </div>
                     
-                {canManageReservations && (
-                    <button
-                        type="button"
-                        onClick={openCreateForm}
-                        className="flex items-center gap-1.5 text-sm font-medium bg-[#f4a93b] hover:bg-[#ffbb52] text-[#0b1120] rounded-md px-3.5 py-2 transition-colors"
-                    >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                        </svg>
-                        Add reservation
-                    </button>
-                )}
+                {/* Creation of reservations is performed by prosumers via the mobile app. */}
+                {/* Web/backoffice does not expose 'Add reservation' to avoid duplicate flows. */}
             </div>
 
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -356,7 +375,7 @@ const ReservationsPage = () => {
                     <div>
                         <h2 className="font-grotesk text-base font-semibold">Reservation queue</h2>
                         <p className="mt-1 text-xs text-[#7c8ba6]">
-                            {loading ? "Loading reservations..." : `${filteredReservations.length} of ${reservations.length} reservations shown`}
+                            {loading ? "Loading reservations..." : `${filteredReservations.length} of ${scopedReservations.length} reservations shown`}
                         </p>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
@@ -416,7 +435,7 @@ const ReservationsPage = () => {
                                 </tr>
                             )}
 
-                            {!loading && reservations.length === 0 && (
+                            {!loading && scopedReservations.length === 0 && (
                                 <tr>
                                     <td colSpan={canManageReservations ? 6 : 5} className="px-5 py-12 text-center text-[#7c8ba6]">
                                         <div className="mx-auto max-w-xs">
@@ -427,7 +446,7 @@ const ReservationsPage = () => {
                                 </tr>
                             )}
 
-                            {!loading && reservations.length > 0 && filteredReservations.length === 0 && (
+                            {!loading && scopedReservations.length > 0 && filteredReservations.length === 0 && (
                                 <tr>
                                     <td colSpan={canManageReservations ? 6 : 5} className="px-5 py-12 text-center text-[#7c8ba6]">
                                         No reservations match your search.
@@ -528,7 +547,16 @@ const ReservationsPage = () => {
                                             {(reservation.status === "Pending" || reservation.status === "Approved") && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => openEditForm(reservation)}
+                                                    onClick={() => {
+                                                        // Prevent editing within 12 hours
+                                                        const slotDate = reservation.slotDateTime ? new Date(reservation.slotDateTime) : null;
+                                                        if (!hasAtLeastHours(slotDate, 12)) {
+                                                            setError("Reservations can only be updated at least 12 hours before the slot.");
+                                                            return;
+                                                        }
+
+                                                        openEditForm(reservation);
+                                                    }}
                                                     className="text-xs text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] rounded-md px-2.5 py-1.5 transition-colors"
                                                 >
                                                     Edit
@@ -609,7 +637,7 @@ const ReservationsPage = () => {
                                                     .filter((n) => n.status === "Active")
                                                     .map((n) => (
                                                         <option key={n.nodeId} value={n.nodeId}>
-                                                            {n.name} — {n.location} ({n.nodeId})
+                                                            {n.name} - {n.location} ({n.nodeId})
                                                         </option>
                                                     ))}
                                             </select>

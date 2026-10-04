@@ -16,7 +16,9 @@ public interface IReservationService
     Task<List<ReservationDto>> GetReservationAsync(
         string? prosumerNic,
         string? status,
-        string? search);
+        string? search,
+        string? callerRole = null,
+        string? callerUserId = null);
 
     Task<ReservationDto?> GetReservationByIdAsync(string id);
 

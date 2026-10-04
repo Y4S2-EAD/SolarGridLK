@@ -12,12 +12,18 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 data class AvailableSlot(
-    @SerializedName(value = "start", alternate = ["Start"])
+    @SerializedName(value = "start", alternate = ["Start", "slotDateTime", "SlotDateTime"])
     val start: String?,
     @SerializedName(value = "end", alternate = ["End"])
     val end: String?,
     @SerializedName(value = "isAvailable", alternate = ["IsAvailable", "available"])
-    val isAvailable: Boolean?
+    val isAvailable: Boolean?,
+    @SerializedName(value = "reservationId", alternate = ["ReservationId"])
+    val reservationId: String? = null,
+    @SerializedName(value = "reservationStatus", alternate = ["ReservationStatus"])
+    val reservationStatus: String? = null,
+    @SerializedName(value = "reservedBy", alternate = ["ReservedBy"])
+    val reservedBy: String? = null
 )
 
 data class AvailableSlotsResponse(

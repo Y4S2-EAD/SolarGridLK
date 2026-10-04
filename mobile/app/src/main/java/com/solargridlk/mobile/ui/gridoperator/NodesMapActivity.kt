@@ -2,6 +2,7 @@ package com.solargridlk.mobile.ui.gridoperator
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
@@ -30,11 +31,11 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.solargridlk.mobile.R
 import com.solargridlk.mobile.data.api.NodeApiClient
-import com.solargridlk.mobile.utils.SessionManager
 import com.solargridlk.mobile.data.local.AppDatabase
 import com.solargridlk.mobile.data.local.NodeDao
 import com.solargridlk.mobile.data.local.NodeEntity
 import com.solargridlk.mobile.data.model.Node
+import com.solargridlk.mobile.utils.SessionManager
 import kotlinx.coroutines.launch
 
 class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
@@ -45,8 +46,8 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var fusedClient: FusedLocationProviderClient
 
     private var allNodes: List<Node> = emptyList()
-    private var selectedArea: String = "All areas"
-    private var nearbyOn: Boolean = false
+    private var selectedArea = "All areas"
+    private var nearbyOn = false
 
     private val nearbyRadiusMeters = 10_000f
     private val latRange = 5.5..10.2
@@ -92,6 +93,34 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         map.uiSettings.isZoomControlsEnabled = true
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(7.8731, 80.7718), 7f))
         if (hasLocationPermission()) enableMyLocation()
+
+        // Touch listener on Map markers to select active node and redirect immediately to calendar
+        map.setOnMarkerClickListener { marker ->
+            val isPickerMode = intent.getBooleanExtra("IS_PICKER_MODE", false)
+            val selectedNode = allNodes.find { (it.name ?: it.id ?: "") == marker.title || it.id == marker.title }
+
+            if (isPickerMode && selectedNode != null) {
+                val isActive = selectedNode.status?.equals("Active", ignoreCase = true) == true
+                if (!isActive) {
+                    Toast.makeText(this, "This node is currently offline. Please select an active node.", Toast.LENGTH_SHORT).show()
+                    return@setOnMarkerClickListener true
+                }
+
+                val nodeTitle = selectedNode.name ?: selectedNode.id ?: "Node"
+                Toast.makeText(this, "Selected Node: $nodeTitle. Opening Calendar...", Toast.LENGTH_SHORT).show()
+
+                val resultIntent = Intent().apply {
+                    putExtra("SELECTED_NODE_ID", selectedNode.id)
+                    putExtra("SELECTED_NODE_NAME", nodeTitle)
+                }
+                setResult(RESULT_OK, resultIntent)
+                finish()
+                true
+            } else {
+                false
+            }
+        }
+
         loadNodes()
     }
 
@@ -105,7 +134,6 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
                 val live = res.body()?.data
                 if (res.isSuccessful && isGridOperator) {
                     val assigned = live.orEmpty()
-                    // Replace the shared cache so another operator's nodes are not kept offline.
                     dao.clear()
                     dao.upsertAll(
                         assigned.filter { it.id != null }.map {
@@ -133,7 +161,6 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    // Real cached data only — no mock/sample fallback
     private suspend fun loadCached(dao: NodeDao): List<Node> {
         val cached = dao.getAll()
         if (cached.isEmpty()) {
@@ -162,7 +189,6 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    /** Central filter: district selection first, then optional 10 km proximity. */
     private fun applyFilters() {
         val base = if (selectedArea == "All areas") allNodes
         else allNodes.filter { it.location?.trim().equals(selectedArea, ignoreCase = true) }
@@ -181,7 +207,7 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
             .addOnSuccessListener { loc ->
                 if (loc == null) {
-                    Toast.makeText(this, "Current location unavailable — set a location in the emulator (Extended controls → Location)", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Current location unavailable — set a location in emulator", Toast.LENGTH_LONG).show()
                     plotNodes(base)
                     return@addOnSuccessListener
                 }
@@ -217,7 +243,7 @@ class NodesMapActivity : AppCompatActivity(), OnMapReadyCallback {
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
 
-    private fun plotNodes(nodes: List<Node> , fitCamera: Boolean = true) {
+    private fun plotNodes(nodes: List<Node>, fitCamera: Boolean = true) {
         if (!::map.isInitialized) return
         map.clear()
 
