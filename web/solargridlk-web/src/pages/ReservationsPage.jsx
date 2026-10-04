@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "../context/AuthContext";
@@ -61,7 +61,7 @@ const ReservationsPage = () => {
     const [statusFilter, setStatusFilter] = useState("All");
     const [copiedTokenId, setCopiedTokenId] = useState(null);
 
-    const loadReservations = async () => {
+    const loadReservations = useCallback(async () => {
         try {
             setLoading(true);
             setError("");
@@ -79,7 +79,7 @@ const ReservationsPage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         loadReservations();
@@ -156,6 +156,7 @@ const ReservationsPage = () => {
         // Web/backoffice does not support creating new reservations.
         setError("Reservations must be created by prosumers via the mobile app.");
         setSuccess("");
+        return;
     };
 
     const openEditForm = (reservation) => {
