@@ -1,5 +1,6 @@
 package com.solargridlk.mobile.ui.prosumer
 
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -29,6 +30,7 @@ class ReservationAdapter(
         val nodeIdText: TextView = view.findViewById(R.id.nodeIdText)
         val statusPill: TextView = view.findViewById(R.id.statusPill)
         val slotTimeText: TextView = view.findViewById(R.id.slotTimeText)
+        val createdAtText: TextView = view.findViewById(R.id.createdAtText)
         val qrButton: Button = view.findViewById(R.id.qrButton)
         val modifyButton: Button = view.findViewById(R.id.modifyButton)
         val cancelButton: Button = view.findViewById(R.id.cancelButton)
@@ -47,17 +49,40 @@ class ReservationAdapter(
         holder.slotTimeText.text = formatSlotDateTime(item.slotDateTime)
         holder.statusPill.text = item.status.uppercase(Locale.getDefault())
 
-        // 1. Status Pill Mapping
+        if (!item.createdAt.isNullOrBlank()) {
+            holder.createdAtText.visibility = View.VISIBLE
+            val formattedCreated = formatSlotDateTime(item.createdAt).replace("Slot: ", "")
+            holder.createdAtText.text = "Booked on: $formattedCreated"
+        } else {
+            holder.createdAtText.visibility = View.GONE
+        }
+
+        // Distinct status pill backgrounds and matching glowing text colors
         when (item.status.trim().lowercase(Locale.getDefault())) {
-            "pending" -> holder.statusPill.setBackgroundResource(R.drawable.bg_pill_pending)
-            "approved" -> holder.statusPill.setBackgroundResource(R.drawable.bg_pill_watch)
-            "completed" -> holder.statusPill.setBackgroundResource(R.drawable.bg_pill_settled)
-            "cancelled" -> holder.statusPill.setBackgroundResource(R.drawable.bg_pill_flagged)
-            else -> holder.statusPill.setBackgroundResource(R.drawable.bg_pill_surplus)
+            "pending" -> {
+                holder.statusPill.setBackgroundResource(R.drawable.bg_status_pending)
+                holder.statusPill.setTextColor(Color.parseColor("#F4A93B"))
+            }
+            "approved", "accepted" -> {
+                holder.statusPill.setBackgroundResource(R.drawable.bg_status_approved)
+                holder.statusPill.setTextColor(Color.parseColor("#34D399"))
+            }
+            "completed", "settled", "done" -> {
+                holder.statusPill.setBackgroundResource(R.drawable.bg_status_completed)
+                holder.statusPill.setTextColor(Color.parseColor("#38BDF8"))
+            }
+            "cancelled", "flagged", "rejected" -> {
+                holder.statusPill.setBackgroundResource(R.drawable.bg_status_cancelled)
+                holder.statusPill.setTextColor(Color.parseColor("#F87171"))
+            }
+            else -> {
+                holder.statusPill.setBackgroundResource(R.drawable.bg_pill_surplus)
+                holder.statusPill.setTextColor(Color.parseColor("#E7ECF5"))
+            }
         }
 
         // 2. View QR Button (Approved & Has QR)
-        val isApproved = item.status.equals("Approved", ignoreCase = true)
+        val isApproved = item.status.equals("Approved", ignoreCase = true) || item.status.equals("Accepted", ignoreCase = true)
         val hasQr = !item.qrCode.isNullOrEmpty()
         if (isApproved && hasQr) {
             holder.qrButton.visibility = View.VISIBLE
@@ -66,9 +91,8 @@ class ReservationAdapter(
             holder.qrButton.visibility = View.GONE
         }
 
-        // 3. Modify Button (Pending or Approved)
-        val isModifiable = item.status.equals("Pending", ignoreCase = true) ||
-                item.status.equals("Approved", ignoreCase = true)
+        // 3. Modify Button (ONLY Pending reservations can be modified)
+        val isModifiable = item.status.equals("Pending", ignoreCase = true)
         if (isModifiable) {
             holder.modifyButton.visibility = View.VISIBLE
             holder.modifyButton.setOnClickListener { onModifyClick(item) }

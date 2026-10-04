@@ -1,5 +1,6 @@
 package com.solargridlk.mobile.data.api
 
+import com.google.gson.annotations.SerializedName
 import com.solargridlk.mobile.data.model.MicrogridNodeResponse
 import com.solargridlk.mobile.data.model.MicrogridNodesResponse
 import com.solargridlk.mobile.data.model.UpdateBatterySlotsRequest
@@ -8,6 +9,22 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
+
+data class AvailableSlot(
+    @SerializedName(value = "start", alternate = ["Start"])
+    val start: String?,
+    @SerializedName(value = "end", alternate = ["End"])
+    val end: String?,
+    @SerializedName(value = "isAvailable", alternate = ["IsAvailable", "available"])
+    val isAvailable: Boolean?
+)
+
+data class AvailableSlotsResponse(
+    val success: Boolean?,
+    val message: String?,
+    val data: List<AvailableSlot>?
+)
 
 interface OperatorNodeApi {
     @GET("nodes")
@@ -15,6 +32,12 @@ interface OperatorNodeApi {
 
     @GET("nodes/{nodeId}")
     suspend fun getNode(@Path("nodeId") nodeId: String): Response<MicrogridNodeResponse>
+
+    @GET("nodes/{nodeId}/slots")
+    suspend fun getAvailableSlots(
+        @Path("nodeId") nodeId: String,
+        @Query("date") date: String
+    ): Response<AvailableSlotsResponse>
 
     @PUT("nodes/{nodeId}/battery-slots")
     suspend fun updateBatterySlots(

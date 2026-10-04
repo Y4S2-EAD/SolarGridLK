@@ -1,7 +1,6 @@
 package com.solargridlk.mobile.ui.prosumer
 
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -11,18 +10,22 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.solargridlk.mobile.R
+import com.solargridlk.mobile.data.api.NodeApiClient
 import com.solargridlk.mobile.data.api.RetrofitClient
 import com.solargridlk.mobile.data.model.CreateReservationRequest
+import com.solargridlk.mobile.data.model.MicrogridNode
 import com.solargridlk.mobile.data.model.Reservation
 import com.solargridlk.mobile.data.model.UpdateReservationRequest
 import com.solargridlk.mobile.data.repository.ReservationRepository
 import com.solargridlk.mobile.ui.auth.LoginActivity
+import com.solargridlk.mobile.ui.gridoperator.NodesMapActivity
 import com.solargridlk.mobile.utils.SessionManager
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -44,17 +47,45 @@ class ProsumerHomeActivity : AppCompatActivity() {
     private lateinit var activeCountText: TextView
     private lateinit var pendingCountText: TextView
     private lateinit var approvedCountText: TextView
+    private lateinit var completedCountText: TextView
     private lateinit var searchInput: EditText
+    private lateinit var mapButton: Button
     private lateinit var createButton: Button
     private lateinit var errorText: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var reservationsRecyclerView: RecyclerView
     private lateinit var logoutButton: TextView
+    private lateinit var yourBookingsButton: View
 
     private var allReservations: List<Reservation> = emptyList()
 
-    // TEMP: Replace with NodeApi.getNodes() when dynamic microgrid node fetching is wired
-    private val availableNodes = arrayOf("NODE-001", "TESTNODE01", "TESTNODE02")
+    // Fallback static nodes
+    private val fallbackNodes = arrayOf("NODE-001", "TESTNODE01", "TESTNODE02")
+
+    // Track if map picker was launched for modify
+    private var pendingModifyReservation: Reservation? = null
+
+    // Map Picker Result Launcher
+    private val mapNodePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val nodeId = result.data?.getStringExtra("SELECTED_NODE_ID") ?: ""
+            val nodeName = result.data?.getStringExtra("SELECTED_NODE_NAME") ?: nodeId
+
+            if (nodeId.isNotEmpty()) {
+                val modifyRes = pendingModifyReservation
+                if (modifyRes != null) {
+                    pendingModifyReservation = null
+                    selectDateAndScheduleForModify(modifyRes.id, nodeId, nodeName)
+                } else {
+                    selectDateAndScheduleForNode(nodeId, nodeName)
+                }
+            }
+        } else {
+            pendingModifyReservation = null
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Initialize prosumer dashboard screen, session, and views.
@@ -72,23 +103,26 @@ class ProsumerHomeActivity : AppCompatActivity() {
         initializeViews()
         setupRecyclerView()
         setupSearch()
+        setupMapButton()
         setupCreateButton()
         setupProfileButton()
+        setupYourBookingsButton()
         setupLogout()
 
         loadDashboard()
     }
 
     override fun onResume() {
-        // Refresh the header after a profile save. Reservation loading stays in onCreate.
+        // Refresh the header & dashboard after returning from profile or full history screen.
         super.onResume()
         if (::welcomeText.isInitialized) {
             bindAccountHeader()
+            loadDashboard()
         }
     }
 
     private fun openLogin() {
-        // Send an unauthenticated visitor to login instead of creating a fake session.
+        // Send an unauthenticated visitor to login.
         val intent = Intent(this, LoginActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         startActivity(intent)
@@ -104,18 +138,21 @@ class ProsumerHomeActivity : AppCompatActivity() {
         activeCountText = findViewById(R.id.activeCountText)
         pendingCountText = findViewById(R.id.pendingCountText)
         approvedCountText = findViewById(R.id.approvedCountText)
+        completedCountText = findViewById(R.id.completedCountText)
         searchInput = findViewById(R.id.searchInput)
+        mapButton = findViewById(R.id.mapButton)
         createButton = findViewById(R.id.createButton)
         errorText = findViewById(R.id.errorText)
         progressBar = findViewById(R.id.progressBar)
         reservationsRecyclerView = findViewById(R.id.reservationsRecyclerView)
         logoutButton = findViewById(R.id.logoutButton)
+        yourBookingsButton = findViewById(R.id.yourBookingsButton)
 
         bindAccountHeader()
     }
 
     private fun bindAccountHeader() {
-        // Fill the welcome header from the signed-in session, never from a hardcoded name.
+        // Fill the welcome header from the signed-in session.
         val fullName = sessionManager.getFullName()?.trim().orEmpty()
         val displayName = if (fullName.isNotEmpty()) fullName else "Prosumer"
         val nic = sessionManager.getUsername()?.trim().orEmpty().ifEmpty { "—" }
@@ -132,38 +169,62 @@ class ProsumerHomeActivity : AppCompatActivity() {
         adapter = ReservationAdapter(
             onCancelClick = { reservation -> confirmCancel(reservation) },
             onQrClick = { reservation -> openQrDisplay(reservation) },
-            onModifyClick = { reservation ->
-                showDateTimePicker { utcString, displayString ->
-                    modifyReservation(reservation.id, utcString, displayString, reservation.nodeId)
-                }
-            }
+            onModifyClick = { reservation -> startModifyFlow(reservation) }
         )
         reservationsRecyclerView.layoutManager = LinearLayoutManager(this)
         reservationsRecyclerView.adapter = adapter
     }
 
     private fun setupSearch() {
-        // Filter reservation list dynamically as user types query
+        // Filter pending reservation list dynamically as user types query
         searchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                filterList(s.toString())
+                filterPendingList(s.toString())
             }
             override fun afterTextChanged(s: Editable?) {}
         })
     }
 
+    private fun setupMapButton() {
+        // Open Google Maps activity showing nearby microgrid nodes
+        mapButton.setOnClickListener {
+            startActivity(Intent(this, NodesMapActivity::class.java))
+        }
+    }
+
     private fun setupCreateButton() {
-        // Open microgrid node selection dialog on create tap
+        // Offer map touch selection or list selection when creating a reservation
         createButton.setOnClickListener {
-            showNodeSelectionDialog()
+            pendingModifyReservation = null
+            AlertDialog.Builder(this)
+                .setTitle("New Reservation")
+                .setItems(arrayOf("Select Active Node on Map 🗺️", "Select Node from List 📋")) { _, which ->
+                    if (which == 0) {
+                        val intent = Intent(this, NodesMapActivity::class.java).apply {
+                            putExtra("IS_PICKER_MODE", true)
+                        }
+                        mapNodePickerLauncher.launch(intent)
+                    } else {
+                        showNodeSelectionListDialog()
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
     }
 
     private fun setupProfileButton() {
-        // Open the signed-in prosumer profile without changing reservation actions.
+        // Open the signed-in prosumer profile
         findViewById<View>(R.id.profileButton).setOnClickListener {
             startActivity(Intent(this, ProsumerProfileActivity::class.java))
+        }
+    }
+
+    private fun setupYourBookingsButton() {
+        // Open full booking history activity
+        yourBookingsButton.setOnClickListener {
+            startActivity(Intent(this, ProsumerBookingsActivity::class.java))
         }
     }
 
@@ -177,22 +238,69 @@ class ProsumerHomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun showNodeSelectionDialog() {
-        // Prompt user to select an available microgrid node
+    private fun startModifyFlow(reservation: Reservation) {
+        // Allow prosumer to change node, date, and slot during modification
         AlertDialog.Builder(this)
-            .setTitle("Select Microgrid Node")
-            .setItems(availableNodes) { _, which ->
-                val selectedNode = availableNodes[which]
-                showDateTimePicker { utcString, displayString ->
-                    createReservation(selectedNode, utcString, displayString)
+            .setTitle("Modify Reservation (${reservation.nodeId})")
+            .setItems(arrayOf(
+                "Keep Current Node (${reservation.nodeId})",
+                "Select New Node on Map 🗺️",
+                "Select New Node from List 📋"
+            )) { _, which ->
+                when (which) {
+                    0 -> selectDateAndScheduleForModify(reservation.id, reservation.nodeId, reservation.nodeId)
+                    1 -> {
+                        pendingModifyReservation = reservation
+                        val intent = Intent(this, NodesMapActivity::class.java).apply {
+                            putExtra("IS_PICKER_MODE", true)
+                        }
+                        mapNodePickerLauncher.launch(intent)
+                    }
+                    2 -> showNodeSelectionListForModify(reservation)
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun showDateTimePicker(onDateTimePicked: (utcIsoString: String, displayLocalString: String) -> Unit) {
-        // Present date and time pickers with min/max restrictions
+    private fun showNodeSelectionListForModify(reservation: Reservation) {
+        // Fetch live nodes list for modification node change
+        lifecycleScope.launch {
+            val liveNodes = try {
+                val res = NodeApiClient.create(this@ProsumerHomeActivity).getNodes()
+                if (res.isSuccessful && !res.body()?.data.isNullOrEmpty()) {
+                    res.body()?.data?.filter { !it.id.isNullOrBlank() }
+                } else null
+            } catch (e: Exception) {
+                null
+            }
+
+            val displayList = if (!liveNodes.isNullOrEmpty()) {
+                liveNodes.map { "${it.name ?: it.id} (${it.id})" }.toTypedArray()
+            } else {
+                fallbackNodes
+            }
+
+            val idList = if (!liveNodes.isNullOrEmpty()) {
+                liveNodes.map { it.id!! }.toTypedArray()
+            } else {
+                fallbackNodes
+            }
+
+            AlertDialog.Builder(this@ProsumerHomeActivity)
+                .setTitle("Select New Microgrid Node")
+                .setItems(displayList) { _, which ->
+                    val selectedNodeId = idList[which]
+                    val selectedNodeName = displayList[which].substringBefore(" (")
+                    selectDateAndScheduleForModify(reservation.id, selectedNodeId, selectedNodeName)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    private fun selectDateAndScheduleForModify(reservationId: String, targetNodeId: String, targetNodeName: String) {
+        // Select new booking date for modification
         val calendar = Calendar.getInstance()
 
         val datePicker = DatePickerDialog(
@@ -202,34 +310,10 @@ class ProsumerHomeActivity : AppCompatActivity() {
                 calendar.set(Calendar.MONTH, month)
                 calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
 
-                TimePickerDialog(
-                    this,
-                    { _, hourOfDay, minute ->
-                        calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                        calendar.set(Calendar.MINUTE, minute)
-                        calendar.set(Calendar.SECOND, 0)
+                val dayOfWeekFormat = SimpleDateFormat("EEEE", Locale.US)
+                val dayOfWeek = dayOfWeekFormat.format(calendar.time)
 
-                        if (calendar.timeInMillis <= System.currentTimeMillis()) {
-                            showError("Slot time must be in the future.")
-                            return@TimePickerDialog
-                        }
-
-                        // ISO UTC string for backend request
-                        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
-                            timeZone = TimeZone.getTimeZone("UTC")
-                        }
-                        val newSlotDateTimeUtc = isoFormat.format(calendar.time)
-
-                        // Local formatted string for UI dialog
-                        val localFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
-                        val displayLocalTime = localFormat.format(calendar.time)
-
-                        onDateTimePicked(newSlotDateTimeUtc, displayLocalTime)
-                    },
-                    calendar.get(Calendar.HOUR_OF_DAY),
-                    calendar.get(Calendar.MINUTE),
-                    true
-                ).show()
+                fetchScheduleAndPickTimeSlotForModify(reservationId, targetNodeId, targetNodeName, calendar, dayOfWeek)
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -240,6 +324,324 @@ class ProsumerHomeActivity : AppCompatActivity() {
         datePicker.datePicker.minDate = now
         datePicker.datePicker.maxDate = now + (7L * 24 * 60 * 60 * 1000)
         datePicker.show()
+    }
+
+    private fun showNodeSelectionListDialog() {
+        // Fetch live microgrid nodes from API or fallback to static list
+        lifecycleScope.launch {
+            val liveNodes = try {
+                val res = NodeApiClient.create(this@ProsumerHomeActivity).getNodes()
+                if (res.isSuccessful && !res.body()?.data.isNullOrEmpty()) {
+                    res.body()?.data?.filter { !it.id.isNullOrBlank() }
+                } else null
+            } catch (e: Exception) {
+                null
+            }
+
+            val displayList = if (!liveNodes.isNullOrEmpty()) {
+                liveNodes.map { "${it.name ?: it.id} (${it.id})" }.toTypedArray()
+            } else {
+                fallbackNodes
+            }
+
+            val idList = if (!liveNodes.isNullOrEmpty()) {
+                liveNodes.map { it.id!! }.toTypedArray()
+            } else {
+                fallbackNodes
+            }
+
+            AlertDialog.Builder(this@ProsumerHomeActivity)
+                .setTitle("Select Microgrid Node")
+                .setItems(displayList) { _, which ->
+                    val selectedNodeId = idList[which]
+                    val selectedNodeName = displayList[which].substringBefore(" (")
+                    selectDateAndScheduleForNode(selectedNodeId, selectedNodeName)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    private fun selectDateAndScheduleForNode(nodeId: String, nodeName: String) {
+        // Select booking date on calendar and query grid side schedules for day of week
+        val calendar = Calendar.getInstance()
+
+        val datePicker = DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                calendar.set(Calendar.YEAR, year)
+                calendar.set(Calendar.MONTH, month)
+                calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+
+                val dayOfWeekFormat = SimpleDateFormat("EEEE", Locale.US)
+                val dayOfWeek = dayOfWeekFormat.format(calendar.time)
+
+                fetchScheduleAndPickTimeSlot(nodeId, nodeName, calendar, dayOfWeek)
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+
+        val now = System.currentTimeMillis()
+        datePicker.datePicker.minDate = now
+        datePicker.datePicker.maxDate = now + (7L * 24 * 60 * 60 * 1000)
+        datePicker.show()
+    }
+
+    private fun generate30MinSlots(startStr: String?, endStr: String?): List<String> {
+        // Slice an operating window into 30-minute bookable slots
+        if (startStr.isNullOrBlank() || endStr.isNullOrBlank()) return emptyList()
+        val startHour = startStr.substringBefore(":").toIntOrNull() ?: return listOf("$startStr - $endStr")
+        val startMin = startStr.substringAfter(":").substringBefore(" ").toIntOrNull() ?: 0
+        val endHour = endStr.substringBefore(":").toIntOrNull() ?: return listOf("$startStr - $endStr")
+        val endMin = endStr.substringAfter(":").substringBefore(" ").toIntOrNull() ?: 0
+
+        val startTotalMin = startHour * 60 + startMin
+        val endTotalMin = endHour * 60 + endMin
+        if (startTotalMin >= endTotalMin) return listOf("$startStr - $endStr")
+
+        val slots = mutableListOf<String>()
+        var current = startTotalMin
+        while (current + 30 <= endTotalMin) {
+            val sh = current / 60
+            val sm = current % 60
+            val eh = (current + 30) / 60
+            val em = (current + 30) % 60
+            slots.add(String.format(Locale.US, "%02d:%02d - %02d:%02d", sh, sm, eh, em))
+            current += 30
+        }
+        return slots
+    }
+
+    private fun fetchScheduleAndPickTimeSlotForModify(
+        reservationId: String,
+        nodeId: String,
+        nodeName: String,
+        calendar: Calendar,
+        dayOfWeek: String
+    ) {
+        // Fetch schedule and pick new time slot for modification
+        lifecycleScope.launch {
+            try {
+                showLoading(true)
+                hideError()
+
+                val operatorApi = RetrofitClient.getOperatorNodeApi(this@ProsumerHomeActivity)
+
+                var nodeData: MicrogridNode? = null
+                try {
+                    val response = operatorApi.getNode(nodeId)
+                    if (response.isSuccessful && response.body()?.data != null) {
+                        nodeData = response.body()?.data
+                    }
+                } catch (_: Exception) {}
+
+                if (nodeData == null || nodeData.schedule.isNullOrEmpty()) {
+                    try {
+                        val allNodesRes = operatorApi.getNodes()
+                        if (allNodesRes.isSuccessful && !allNodesRes.body()?.data.isNullOrEmpty()) {
+                            nodeData = allNodesRes.body()?.data?.find {
+                                it.nodeId.equals(nodeId, ignoreCase = true) ||
+                                        it.name.equals(nodeId, ignoreCase = true) ||
+                                        it.name.equals(nodeName, ignoreCase = true)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                showLoading(false)
+
+                val scheduleList = nodeData?.schedule ?: emptyList()
+
+                val dayPrefix = dayOfWeek.take(3)
+                val availableDaySlots = scheduleList.filter { slot ->
+                    val day = slot.dayOfWeek?.trim() ?: ""
+                    day.equals(dayOfWeek, ignoreCase = true) || day.equals(dayPrefix, ignoreCase = true)
+                }
+
+                if (availableDaySlots.isNotEmpty()) {
+                    val all30MinSlots = mutableListOf<String>()
+                    for (slot in availableDaySlots) {
+                        val generated = generate30MinSlots(slot.startTime, slot.endTime)
+                        if (generated.isNotEmpty()) {
+                            all30MinSlots.addAll(generated)
+                        } else {
+                            all30MinSlots.add("${slot.startTime ?: "10:00"} - ${slot.endTime ?: "10:30"}")
+                        }
+                    }
+                    showTimeSlotDialogForModify(reservationId, nodeId, nodeName, calendar, dayOfWeek, all30MinSlots.distinct().toTypedArray())
+                } else {
+                    val openDays = scheduleList.mapNotNull { it.dayOfWeek }.distinct().joinToString(", ")
+                    val helpMsg = if (openDays.isNotBlank()) {
+                        "$nodeName is closed on $dayOfWeek. Open operating days: $openDays"
+                    } else {
+                        "No operating slots configured by admin for $nodeName yet."
+                    }
+                    showError(helpMsg)
+                }
+
+            } catch (e: Exception) {
+                showLoading(false)
+                showError("Network error fetching schedule: ${e.message}")
+            }
+        }
+    }
+
+    private fun showTimeSlotDialogForModify(
+        reservationId: String,
+        nodeId: String,
+        nodeName: String,
+        calendar: Calendar,
+        dayOfWeek: String,
+        slots: Array<String>
+    ) {
+        // Display available 30-minute grid time slots for modification
+        AlertDialog.Builder(this)
+            .setTitle("Select New $nodeName Slot ($dayOfWeek)")
+            .setItems(slots) { _, which ->
+                val chosenSlot = slots[which]
+                val timePart = chosenSlot.substringAfter(" ").ifEmpty { chosenSlot }
+                val startTime = timePart.substringBefore(" - ").trim()
+
+                val hour = startTime.substringBefore(":").toIntOrNull() ?: 10
+                val minute = startTime.substringAfter(":").toIntOrNull() ?: 0
+
+                calendar.set(Calendar.HOUR_OF_DAY, hour)
+                calendar.set(Calendar.MINUTE, minute)
+                calendar.set(Calendar.SECOND, 0)
+
+                if (calendar.timeInMillis <= System.currentTimeMillis()) {
+                    showError("Slot time must be in the future.")
+                    return@setItems
+                }
+
+                val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+                val newSlotDateTimeUtc = isoFormat.format(calendar.time)
+
+                val displayFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+                val displayTime = displayFormat.format(calendar.time)
+
+                modifyReservation(reservationId, nodeId, newSlotDateTimeUtc, displayTime)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun fetchScheduleAndPickTimeSlot(
+        nodeId: String,
+        nodeName: String,
+        calendar: Calendar,
+        dayOfWeek: String
+    ) {
+        // Query GET /api/nodes/{nodeId} or GET /api/nodes for admin-configured operating windows
+        lifecycleScope.launch {
+            try {
+                showLoading(true)
+                hideError()
+
+                val operatorApi = RetrofitClient.getOperatorNodeApi(this@ProsumerHomeActivity)
+
+                var nodeData: MicrogridNode? = null
+                try {
+                    val response = operatorApi.getNode(nodeId)
+                    if (response.isSuccessful && response.body()?.data != null) {
+                        nodeData = response.body()?.data
+                    }
+                } catch (_: Exception) {}
+
+                if (nodeData == null || nodeData.schedule.isNullOrEmpty()) {
+                    try {
+                        val allNodesRes = operatorApi.getNodes()
+                        if (allNodesRes.isSuccessful && !allNodesRes.body()?.data.isNullOrEmpty()) {
+                            nodeData = allNodesRes.body()?.data?.find {
+                                it.nodeId.equals(nodeId, ignoreCase = true) ||
+                                        it.name.equals(nodeId, ignoreCase = true) ||
+                                        it.name.equals(nodeName, ignoreCase = true)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                showLoading(false)
+
+                val scheduleList = nodeData?.schedule ?: emptyList()
+
+                val dayPrefix = dayOfWeek.take(3)
+                val availableDaySlots = scheduleList.filter { slot ->
+                    val day = slot.dayOfWeek?.trim() ?: ""
+                    day.equals(dayOfWeek, ignoreCase = true) || day.equals(dayPrefix, ignoreCase = true)
+                }
+
+                if (availableDaySlots.isNotEmpty()) {
+                    val all30MinSlots = mutableListOf<String>()
+                    for (slot in availableDaySlots) {
+                        val generated = generate30MinSlots(slot.startTime, slot.endTime)
+                        if (generated.isNotEmpty()) {
+                            all30MinSlots.addAll(generated)
+                        } else {
+                            all30MinSlots.add("${slot.startTime ?: "10:00"} - ${slot.endTime ?: "10:30"}")
+                        }
+                    }
+                    showTimeSlotDialog(nodeId, nodeName, calendar, dayOfWeek, all30MinSlots.distinct().toTypedArray())
+                } else {
+                    val openDays = scheduleList.mapNotNull { it.dayOfWeek }.distinct().joinToString(", ")
+                    val helpMsg = if (openDays.isNotBlank()) {
+                        "$nodeName is closed on $dayOfWeek. Open operating days: $openDays"
+                    } else {
+                        "No operating slots configured by admin for $nodeName yet."
+                    }
+                    showError(helpMsg)
+                }
+
+            } catch (e: Exception) {
+                showLoading(false)
+                showError("Network error fetching schedule: ${e.message}")
+            }
+        }
+    }
+
+    private fun showTimeSlotDialog(
+        nodeId: String,
+        nodeName: String,
+        calendar: Calendar,
+        dayOfWeek: String,
+        slots: Array<String>
+    ) {
+        // Display available 30-minute grid time slots for the chosen day
+        AlertDialog.Builder(this)
+            .setTitle("Select $nodeName Slot ($dayOfWeek)")
+            .setItems(slots) { _, which ->
+                val chosenSlot = slots[which]
+                val timePart = chosenSlot.substringAfter(" ").ifEmpty { chosenSlot }
+                val startTime = timePart.substringBefore(" - ").trim()
+
+                val hour = startTime.substringBefore(":").toIntOrNull() ?: 10
+                val minute = startTime.substringAfter(":").toIntOrNull() ?: 0
+
+                calendar.set(Calendar.HOUR_OF_DAY, hour)
+                calendar.set(Calendar.MINUTE, minute)
+                calendar.set(Calendar.SECOND, 0)
+
+                if (calendar.timeInMillis <= System.currentTimeMillis()) {
+                    showError("Slot time must be in the future.")
+                    return@setItems
+                }
+
+                val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+                val newSlotDateTimeUtc = isoFormat.format(calendar.time)
+
+                val displayFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+                val displayTime = displayFormat.format(calendar.time)
+
+                createReservation(nodeId, newSlotDateTimeUtc, displayTime)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun createReservation(nodeId: String, newSlotDateTimeUtc: String, displayLocalTime: String) {
@@ -282,21 +684,24 @@ class ProsumerHomeActivity : AppCompatActivity() {
 
     private fun modifyReservation(
         reservationId: String,
+        targetNodeId: String,
         newSlotDateTimeUtc: String,
-        displayLocalTime: String,
-        nodeId: String
+        displayLocalTime: String
     ) {
-        // Send a slot time modification request to backend API
+        // Send a slot time & node modification request to backend API
         lifecycleScope.launch {
             try {
                 showLoading(true)
                 hideError()
 
-                val request = UpdateReservationRequest(slotDateTime = newSlotDateTimeUtc)
+                val request = UpdateReservationRequest(
+                    nodeId = targetNodeId,
+                    slotDateTime = newSlotDateTimeUtc
+                )
                 val response = reservationRepository.updateReservation(reservationId, request)
 
                 if (response.isSuccessful && response.body()?.success == true) {
-                    showSuccessDialog("Modification Successful", "Slot time for $nodeId updated to:\n$displayLocalTime")
+                    showSuccessDialog("Modification Successful", "Slot for $targetNodeId updated to:\n$displayLocalTime")
                     loadDashboard()
                 } else {
                     val rawError = response.errorBody()?.string()
@@ -311,7 +716,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
     }
 
     private fun loadDashboard() {
-        // Fetch dashboard counts and prosumer reservations list
+        // Fetch dashboard counts and filter list to show ONLY Pending bookings on Home Dashboard
         val nic = sessionManager.getUsername()
         if (nic.isNullOrEmpty()) {
             showError("No session found. Please log in again.")
@@ -339,7 +744,16 @@ class ProsumerHomeActivity : AppCompatActivity() {
 
                 if (listResponse.isSuccessful && listResponse.body()?.success == true) {
                     allReservations = listResponse.body()?.data ?: emptyList()
-                    adapter.submitList(allReservations)
+
+                    // Calculate completed count from full list
+                    val completedCount = allReservations.count {
+                        it.status.equals("Completed", ignoreCase = true) ||
+                                it.status.equals("Settled", ignoreCase = true)
+                    }
+                    completedCountText.text = completedCount.toString()
+
+                    // Home Dashboard displays ONLY Pending bookings
+                    filterPendingList(searchInput.text.toString())
                 } else {
                     val rawError = listResponse.errorBody()?.string()
                     showError(parseErrorMessage(rawError, listResponse.code(), listResponse.body()?.message))
@@ -353,14 +767,16 @@ class ProsumerHomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun filterList(query: String) {
-        // Filter cached reservation list based on query
+    private fun filterPendingList(query: String) {
+        // Filter reservations to show ONLY Pending bookings on the Home Dashboard
+        val pendingOnly = allReservations.filter { it.status.equals("Pending", ignoreCase = true) }
         val filtered = if (query.isBlank()) {
-            allReservations
+            pendingOnly
         } else {
-            allReservations.filter {
+            pendingOnly.filter {
                 it.nodeId.contains(query, ignoreCase = true) ||
-                        it.status.contains(query, ignoreCase = true)
+                        it.slotDateTime.contains(query, ignoreCase = true) ||
+                        (it.createdAt?.contains(query, ignoreCase = true) == true)
             }
         }
         adapter.submitList(filtered)
