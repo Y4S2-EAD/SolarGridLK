@@ -99,7 +99,7 @@ const NodeOperationsPage = () => {
             <div>
                 <h2 className="font-grotesk text-xl font-semibold">Node Operations</h2>
                 <p className="text-sm text-[#7c8ba6] mt-1 max-w-xl">
-                    Monitor microgrid nodes and update current battery slot availability for grid operations.
+                    Monitor the microgrid nodes assigned to you and update their current battery slot availability.
                 </p>
             </div>
 
@@ -140,7 +140,11 @@ const NodeOperationsPage = () => {
                 </div>
             )}
 
-            {!loading && !error && visible.length === 0 && (
+            {!loading && !error && nodes.length === 0 && (
+                <p className="text-sm text-[#7c8ba6]">No nodes are assigned to you.</p>
+            )}
+
+            {!loading && !error && nodes.length > 0 && visible.length === 0 && (
                 <p className="text-sm text-[#7c8ba6]">No nodes match this search.</p>
             )}
 

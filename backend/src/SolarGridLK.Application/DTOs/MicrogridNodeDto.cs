@@ -20,6 +20,10 @@ public class MicrogridNodeDto
 
     public string Status { get; set; } = string.Empty;
 
+    public string? AssignedGridOperatorId { get; set; }
+
+    public string? AssignedGridOperatorName { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime LastModifiedAt { get; set; }

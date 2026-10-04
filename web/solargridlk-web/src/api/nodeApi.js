@@ -1,7 +1,7 @@
 import apiClient from "./apiClient";
 
 export const getNodes = async () => {
-    // Retrieve every microgrid node.
+    // Retrieve nodes visible to the signed-in user. Grid Operators receive only assigned nodes.
     const response = await apiClient.get("/nodes");
 
     return response.data;

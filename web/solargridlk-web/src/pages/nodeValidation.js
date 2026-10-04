@@ -24,6 +24,10 @@ export const nodeFieldError = (fields, { requireNodeId = false } = {}) => {
         return "Please select a district.";
     }
 
+    if (!String(fields.assignedGridOperatorId || "").trim()) {
+        return "Please select a Grid Operator.";
+    }
+
     if (fields.latitude.trim() === "") {
         return "Latitude is required.";
     }
@@ -91,6 +95,7 @@ export const toNodePayload = (fields, { includeNodeId = false } = {}) => {
         longitude: Number(fields.longitude),
         capacityKw: Number(fields.capacityKw),
         availableBatterySlots: Number(fields.availableBatterySlots),
+        assignedGridOperatorId: String(fields.assignedGridOperatorId || "").trim(),
     };
 
     if (includeNodeId) {
@@ -100,6 +105,18 @@ export const toNodePayload = (fields, { includeNodeId = false } = {}) => {
     }
 
     return payload;
+};
+
+export const gridOperatorLabel = (node) => {
+    if (node?.assignedGridOperatorName) {
+        return node.assignedGridOperatorName;
+    }
+
+    if (node?.assignedGridOperatorId) {
+        return "Assigned operator";
+    }
+
+    return "Not assigned";
 };
 
 export const sriLankanDistricts = [

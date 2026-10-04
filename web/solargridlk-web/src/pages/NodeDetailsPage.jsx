@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { deactivateNode, getNodeById, nodeDeactivateErrorText, updateNodeSchedule } from "../api/nodeApi";
 import NodeFormPanel from "./NodeFormPanel";
-import { buildScheduleForm, scheduleFieldError, toSchedulePayload } from "./nodeValidation";
+import { buildScheduleForm, gridOperatorLabel, scheduleFieldError, toSchedulePayload } from "./nodeValidation";
 
 const displayValue = (value) => (value || value === 0 ? value : "—");
 
@@ -277,6 +277,7 @@ const NodeDetailsPage = () => {
               { label: "Node ID", value: node.nodeId },
               { label: "Name", value: displayValue(node.name) },
               { label: "Location", value: displayValue(node.location) },
+              { label: "Grid Operator", value: gridOperatorLabel(node) },
               { label: "Latitude", value: displayValue(node.latitude) },
               { label: "Longitude", value: displayValue(node.longitude) },
               { label: "Capacity", value: `${displayValue(node.capacityKw)} kW` },
