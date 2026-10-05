@@ -70,8 +70,9 @@ public class ReservationService : IReservationService
         Reservation reservation = null!;
         await _transactionRunner.RunInTransactionAsync<bool>(async s =>
         {
-            // Double-check capacity inside the transaction using session-aware count
-            var reservedCount = await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).CountReservationsForSlotAsync(s, request.NodeId.Trim(), request.SlotDateTime);
+            // Double-check capacity inside the transaction using session-aware count (use infrastructure repo interface)
+            var infraRepo = (SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository)_reservationRepository;
+            var reservedCount = await infraRepo.CountReservationsForSlotAsync(s, request.NodeId.Trim(), request.SlotDateTime);
             if (reservedCount >= node.AvailableBatterySlots)
             {
                 throw new InvalidOperationException("Slot capacity reached.");
@@ -87,8 +88,8 @@ public class ReservationService : IReservationService
                 LastModifiedAt = DateTime.UtcNow
             };
 
-            // Insert the reservation using the session (use concrete repository to access session-aware overload)
-            await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).CreateAsync(s, reservation);
+            // Insert the reservation using the session via infrastructure repo
+            await infraRepo.CreateAsync(s, reservation);
 
             return true;
         });
@@ -208,7 +209,8 @@ public class ReservationService : IReservationService
 
         await _transactionRunner.RunInTransactionAsync<bool>(async s =>
         {
-            var reservedCount = await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).CountReservationsForSlotExcludingAsync(s, request.NodeId.Trim(), request.SlotDateTime, reservation.Id);
+            var infraRepo = (SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository)_reservationRepository;
+            var reservedCount = await infraRepo.CountReservationsForSlotExcludingAsync(s, request.NodeId.Trim(), request.SlotDateTime, reservation.Id);
             if (reservedCount >= node.AvailableBatterySlots)
             {
                 throw new InvalidOperationException("Slot capacity reached.");
@@ -218,7 +220,7 @@ public class ReservationService : IReservationService
             reservation.SlotDateTime = request.SlotDateTime;
             reservation.LastModifiedAt = DateTime.UtcNow;
 
-            await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).UpdateAsync(s, reservation);
+            await infraRepo.UpdateAsync(s, reservation);
 
             return true;
         });
@@ -251,7 +253,8 @@ public class ReservationService : IReservationService
             reservation.Status = ReservationStatus.Cancelled;
             reservation.LastModifiedAt = DateTime.UtcNow;
 
-            await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).UpdateAsync(s, reservation);
+            var infraRepo = (SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository)_reservationRepository;
+            await infraRepo.UpdateAsync(s, reservation);
 
             return true;
         });

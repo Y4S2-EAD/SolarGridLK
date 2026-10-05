@@ -13,7 +13,7 @@ using SolarGridLK.Infrastructure.MongoDB;
 
 namespace SolarGridLK.Infrastructure.Repositories;
 
-public class ReservationRepository : IReservationRepository
+public class ReservationRepository : IReservationRepository, SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository
 {
     private readonly IMongoCollection<Reservation> _reservations;
 
@@ -66,6 +66,11 @@ public class ReservationRepository : IReservationRepository
         await _reservations.InsertOneAsync(session, reservation);
     }
 
+    async Task SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.CreateAsync(global::MongoDB.Driver.IClientSessionHandle session, Reservation reservation)
+    {
+        await CreateAsync(session, reservation);
+    }
+
     // Count reservations for a specific node and exact slot start (UTC)
     // Count reservations for a specific node and exact slot start (UTC)
     public async Task<int> CountReservationsForSlotAsync(string nodeId, DateTime slotStartUtc)
@@ -85,6 +90,16 @@ public class ReservationRepository : IReservationRepository
         return (int)await _reservations.CountDocumentsAsync(session, r => r.NodeId == nodeId && r.SlotDateTime == slotStartUtc && r.Id != excludeReservationId && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
     }
 
+    async Task<int> SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.CountReservationsForSlotAsync(global::MongoDB.Driver.IClientSessionHandle session, string nodeId, DateTime slotStartUtc)
+    {
+        return await CountReservationsForSlotAsync(session, nodeId, slotStartUtc);
+    }
+
+    async Task<int> SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.CountReservationsForSlotExcludingAsync(global::MongoDB.Driver.IClientSessionHandle session, string nodeId, DateTime slotStartUtc, string excludeReservationId)
+    {
+        return await CountReservationsForSlotExcludingAsync(session, nodeId, slotStartUtc, excludeReservationId);
+    }
+
     // Atomic reservation creation using a SlotCounters collection is handled elsewhere; provide helpers as needed.
 
     public async Task UpdateAsync(Reservation reservation)
@@ -96,6 +111,11 @@ public class ReservationRepository : IReservationRepository
     internal async Task UpdateAsync(global::MongoDB.Driver.IClientSessionHandle session, Reservation reservation)
     {
         await _reservations.ReplaceOneAsync(session, existing => existing.Id == reservation.Id, reservation);
+    }
+
+    async Task SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.UpdateAsync(global::MongoDB.Driver.IClientSessionHandle session, Reservation reservation)
+    {
+        await UpdateAsync(session, reservation);
     }
 
     public async Task<Reservation?> GetByQrCodeAsync(string qrCode)

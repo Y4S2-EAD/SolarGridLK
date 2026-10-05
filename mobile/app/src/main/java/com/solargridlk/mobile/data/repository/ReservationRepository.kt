@@ -48,9 +48,10 @@ class ReservationRepository(private val reservationApi: ReservationApi) {
     }
 
     suspend fun createReservation(
-        request: CreateReservationRequest
+        request: CreateReservationRequest,
+        idempotencyKey: String? = null
     ): Response<ReservationSingleResponse> {
-        return reservationApi.createReservation(request)
+        return reservationApi.createReservation(idempotencyKey, request)
     }
 
     suspend fun approveReservation(

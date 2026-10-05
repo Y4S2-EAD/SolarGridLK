@@ -7,6 +7,16 @@ export const getNodes = async () => {
     return response.data;
 };
 
+export const getNodeSlots = async (nodeId, date) => {
+    // Retrieve server-generated 30-minute booking slots for a node on the given date (YYYY-MM-DD).
+    const response = await apiClient.get(
+        `/nodes/${encodeURIComponent(nodeId)}/slots`,
+        { params: { date } }
+    );
+
+    return response.data; // { success, message, data: [ AvailableSlotDto ] }
+};
+
 export const batterySlotErrorText = (message, status) => {
     if (status === 401) {
         return "Your session has expired. Please log in again.";

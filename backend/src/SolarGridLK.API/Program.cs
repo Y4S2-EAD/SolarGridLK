@@ -34,11 +34,11 @@ builder.Services.AddSingleton(mongoSettings);
 // MongoDB context
 builder.Services.AddSingleton<MongoDbContext>();
 
-// Register MongoClient for transactions and session support
-builder.Services.AddSingleton(sp =>
+// Register MongoClient for transactions and session support (register as the IMongoClient interface)
+builder.Services.AddSingleton<global::MongoDB.Driver.IMongoClient>(sp =>
 {
     var settings = sp.GetRequiredService<MongoDbSettings>();
-    return new MongoDB.Driver.MongoClient(settings.ConnectionString);
+    return new global::MongoDB.Driver.MongoClient(settings.ConnectionString);
 });
 
 // SlotCounterRepository (fallback)
@@ -97,6 +97,8 @@ builder.Services.AddScoped<IProsumerService, ProsumerService>();
 builder.Services.AddScoped<IMicrogridNodeRepository, MicrogridNodeRepository>();
 builder.Services.AddScoped<IMicrogridNodeService, MicrogridNodeService>();
 builder.Services.AddScoped<IReservationRepository, ReservationRepository>();
+// Register infrastructure reservation repository to expose session-aware methods
+builder.Services.AddScoped<SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository>(sp => sp.GetRequiredService<ReservationRepository>());
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<DatabaseSeeder>();
 

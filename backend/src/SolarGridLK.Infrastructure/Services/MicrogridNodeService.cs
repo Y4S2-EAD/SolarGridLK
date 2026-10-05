@@ -252,9 +252,9 @@ public class MicrogridNodeService : IMicrogridNodeService
         return await ToDtoAsync(node);
     }
 
+
     public async Task<List<AvailableSlotDto>> GetAvailableSlotsAsync(string nodeId, DateTime date, int slotMinutes = 30)
     {
-        // Look up the node and reject if missing or deactivated.
         var node = await _nodeRepository.GetByNodeIdAsync(NormalizeNodeId(nodeId));
         if (node == null)
         {
@@ -265,69 +265,59 @@ public class MicrogridNodeService : IMicrogridNodeService
             throw new InvalidOperationException("Node is not active.");
         }
 
-        // Sri Lanka timezone handling: schedule times are entered in local time (Asia/Colombo) but SlotDateTime is stored UTC.
+        // Identify Sri Lanka Standard Time Zone
         var slTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
             System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
                 ? "Sri Lanka Standard Time"
                 : "Asia/Colombo"
         );
 
-        // Find the schedule windows for this day of week.
         var dayName = date.DayOfWeek.ToString();
         var windows = node.Schedule.Where(w =>
             string.Equals(w.DayOfWeek, dayName, StringComparison.OrdinalIgnoreCase));
 
-        // Get already-booked UTC start times for this node and date.
         var reservations = await _reservationRepository.GetByNodeIdAndDateAsync(node.NodeId, date);
         var bookedStarts = new HashSet<DateTime>(reservations
             .Where(r => r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved)
             .Select(r => r.SlotDateTime));
 
-        // Break each local-time window into fixed-length slots, converted to UTC, and mark availability.
         var slots = new List<AvailableSlotDto>();
         foreach (var w in windows)
         {
             var startTime = TimeSpan.ParseExact(w.StartTime, @"hh\:mm", CultureInfo.InvariantCulture);
             var endTime = TimeSpan.ParseExact(w.EndTime, @"hh\:mm", CultureInfo.InvariantCulture);
 
-            // Build the local datetime (Unspecified kind) then convert to UTC using the local Sri Lanka timezone
+            // Combine local date and local time as Unspecified Local DateTime
             var localStart = DateTime.SpecifyKind(date.Date + startTime, DateTimeKind.Unspecified);
-            var localBoundary = DateTime.SpecifyKind(date.Date + endTime, DateTimeKind.Unspecified);
+            var localEnd = DateTime.SpecifyKind(date.Date + endTime, DateTimeKind.Unspecified);
 
+            // Convert Sri Lanka Local Time to true UTC DateTime
             var s = TimeZoneInfo.ConvertTimeToUtc(localStart, slTimeZone);
-            var boundary = TimeZoneInfo.ConvertTimeToUtc(localBoundary, slTimeZone);
+            var boundary = TimeZoneInfo.ConvertTimeToUtc(localEnd, slTimeZone);
 
             while (s.AddMinutes(slotMinutes) <= boundary)
             {
                 var slotEnd = s.AddMinutes(slotMinutes);
-                var isFuture = s > DateTime.UtcNow;
-                // Find any reservation matching this UTC instant (consider Pending or Approved as taken)
-                var reservation = reservations.FirstOrDefault(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1
-                                                                   && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
-                var booked = reservation != null;
-                // Determine reserved count for this slot (Pending or Approved)
-                var reservedCount = reservations.Count(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1 && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
-                var capacity = node.AvailableBatterySlots;
-                var available = Math.Max(0, capacity - reservedCount);
+                var isFuture = s > DateTime.UtcNow; // Correctly evaluates future hours today!
+                var booked = bookedStarts.Contains(s);
 
-                var dto = new AvailableSlotDto
+                slots.Add(new AvailableSlotDto
                 {
                     Start = s,
                     End = slotEnd,
-                    Capacity = capacity,
-                    ReservedCount = reservedCount,
-                    Available = available,
-                    IsAvailable = isFuture && available > 0,
-                    ReservationId = reservation?.Id,
-                    ReservationStatus = reservation?.Status.ToString(),
-                    ReservedBy = reservation?.ProsumerNic
-                };
-                slots.Add(dto);
+                    IsAvailable = isFuture && !booked,
+                    Capacity = 1,
+                    ReservedCount = booked ? 1 : 0,
+                    Available = (isFuture && !booked) ? 1 : 0
+                });
+
                 s = slotEnd;
             }
         }
+
         return slots;
     }
+
 
     public async Task<MicrogridNodeDto?> UpdateBatterySlotsAsync(
         string nodeId,
@@ -366,7 +356,11 @@ public class MicrogridNodeService : IMicrogridNodeService
         return await ToDtoAsync(node);
     }
 
-    public async Task<List<AvailableSlotDto>> GetAvailableSlotsExcludingReservationAsync(string nodeId, DateTime date, string excludeReservationId, int slotMinutes = 30)
+    public async Task<List<AvailableSlotDto>> GetAvailableSlotsExcludingReservationAsync(
+    string nodeId,
+    DateTime date,
+    string excludeReservationId,
+    int slotMinutes = 30)
     {
         // Look up the node and reject if missing or deactivated.
         var node = await _nodeRepository.GetByNodeIdAsync(NormalizeNodeId(nodeId));
@@ -379,48 +373,61 @@ public class MicrogridNodeService : IMicrogridNodeService
             throw new InvalidOperationException("Node is not active.");
         }
 
-        var slOffset = TimeSpan.FromHours(5.5);
+        // Identify Sri Lanka Standard Time Zone
+        var slTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
+            System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+                ? "Sri Lanka Standard Time"
+                : "Asia/Colombo"
+        );
+
         var dayName = date.DayOfWeek.ToString();
         var windows = node.Schedule.Where(w =>
             string.Equals(w.DayOfWeek, dayName, StringComparison.OrdinalIgnoreCase));
 
-        // Exclude the reservation being updated, so its own current slot doesn't block itself.
-        var reservations = await _reservationRepository.GetByNodeIdAndDateExcludingAsync(node.NodeId, date, excludeReservationId);
+        // Exclude the reservation being updated so its own current slot doesn't block itself.
+        var reservations = await _reservationRepository.GetByNodeIdAndDateExcludingAsync(
+            node.NodeId,
+            date,
+            excludeReservationId);
+
+        var bookedStarts = new HashSet<DateTime>(reservations
+            .Where(r => r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved)
+            .Select(r => r.SlotDateTime));
 
         var slots = new List<AvailableSlotDto>();
         foreach (var w in windows)
         {
             var startTime = TimeSpan.ParseExact(w.StartTime, @"hh\:mm", CultureInfo.InvariantCulture);
             var endTime = TimeSpan.ParseExact(w.EndTime, @"hh\:mm", CultureInfo.InvariantCulture);
-            var s = date.Date + startTime - slOffset;
-            var boundary = date.Date + endTime - slOffset;
+
+            // Combine local date and local operating window time as Unspecified Local DateTime
+            var localStart = DateTime.SpecifyKind(date.Date + startTime, DateTimeKind.Unspecified);
+            var localEnd = DateTime.SpecifyKind(date.Date + endTime, DateTimeKind.Unspecified);
+
+            // Convert Sri Lanka Local Time to true UTC DateTime
+            var s = TimeZoneInfo.ConvertTimeToUtc(localStart, slTimeZone);
+            var boundary = TimeZoneInfo.ConvertTimeToUtc(localEnd, slTimeZone);
 
             while (s.AddMinutes(slotMinutes) <= boundary)
             {
                 var slotEnd = s.AddMinutes(slotMinutes);
-                var isFuture = s > DateTime.UtcNow;
-                var reservation = reservations.FirstOrDefault(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1
-                                                                   && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
-                var reservedCount = reservations.Count(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1
-                                                            && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
-                var capacity = node.AvailableBatterySlots;
-                var available = Math.Max(0, capacity - reservedCount);
+                var isFuture = s > DateTime.UtcNow; // Correctly evaluates future hours today!
+                var booked = bookedStarts.Contains(s);
 
                 slots.Add(new AvailableSlotDto
                 {
                     Start = s,
                     End = slotEnd,
-                    Capacity = capacity,
-                    ReservedCount = reservedCount,
-                    Available = available,
-                    IsAvailable = isFuture && available > 0,
-                    ReservationId = reservation?.Id,
-                    ReservationStatus = reservation?.Status.ToString(),
-                    ReservedBy = reservation?.ProsumerNic
+                    IsAvailable = isFuture && !booked,
+                    Capacity = 1,
+                    ReservedCount = booked ? 1 : 0,
+                    Available = (isFuture && !booked) ? 1 : 0
                 });
+
                 s = slotEnd;
             }
         }
+
         return slots;
     }
 
