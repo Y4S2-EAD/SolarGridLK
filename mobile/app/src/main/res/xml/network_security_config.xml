@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<!-- Allow HTTP communication with the local development backend. -->
 <network-security-config>
 
-    <!-- Allow cleartext HTTP traffic during local development. -->
-    <base-config cleartextTrafficPermitted="true" />
+    <domain-config cleartextTrafficPermitted="false">
+
+        <domain includeSubdomains="false">
+            192.168.1.136
+        </domain>
+
+        <trust-anchors>
+            <certificates src="@raw/solargridlk_mobile" />
+        </trust-anchors>
+
+    </domain-config>
 
 </network-security-config>
