@@ -9,6 +9,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -49,9 +50,10 @@ interface ReservationApi {
         @Path("id") id: String
     ): Response<ReservationSingleResponse>
 
-    // 6. Create reservation
+    // 6. Create reservation with idempotency key
     @POST("reservations")
     suspend fun createReservation(
+        @Header("X-Idempotency-Key") idempotencyKey: String? = null,
         @Body request: CreateReservationRequest
     ): Response<ReservationSingleResponse>
 

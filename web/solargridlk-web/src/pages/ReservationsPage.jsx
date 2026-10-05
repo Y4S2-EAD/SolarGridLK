@@ -8,7 +8,9 @@ import {
     createReservation,
     getReservations,
     updateReservation,
+    interpretReservationError,
 } from "../api/reservationApi";
+import { getNodeSlots } from "../api/nodeApi";
 import { getNodes } from "../api/nodeApi";
 
 const emptyForm = {
@@ -82,7 +84,11 @@ const ReservationsPage = () => {
     }, []);
 
     useEffect(() => {
-        loadReservations();
+        const run = async () => {
+            await loadReservations();
+        };
+        run();
+
         // Load nodes for the reservation form (show only active nodes)
         let cancelled = false;
 
@@ -106,7 +112,7 @@ const ReservationsPage = () => {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [loadReservations]);
 
     const assignedNodeIds = new Set((nodes || []).map((node) => node.nodeId));
     const scopedReservations =
@@ -151,14 +157,6 @@ const ReservationsPage = () => {
         setError("");
     };
 
-    const openCreateForm = () => {
-        // Creation of reservations is performed by prosumers via the mobile app.
-        // Web/backoffice does not support creating new reservations.
-        setError("Reservations must be created by prosumers via the mobile app.");
-        setSuccess("");
-        return;
-    };
-
     const openEditForm = (reservation) => {
         setEditingReservationId(reservation.id);
         const selectedDate = reservation.slotDateTime
@@ -196,30 +194,56 @@ const ReservationsPage = () => {
                 return;
             }
 
-            const response = editingReservationId
-                ? await updateReservation(editingReservationId, {
-                    nodeId: formData.nodeId,
-                    slotDateTime: slotDateObj.toISOString(),
-                })
-                : await createReservation({
-                    prosumerNic: formData.prosumerNic,
-                    nodeId: formData.nodeId,
-                    slotDateTime: slotDateObj.toISOString(),
-                });
+            // For edits we must rely on server-side slot validation. Prefer letting the server
+            // reject with 409/412 and then respond accordingly (refresh slots, surface message).
+            const payload = editingReservationId
+                ? { nodeId: formData.nodeId, slotDateTime: slotDateObj.toISOString() }
+                : { prosumerNic: formData.prosumerNic, nodeId: formData.nodeId, slotDateTime: slotDateObj.toISOString() };
 
-            if (!response.success) {
-                // Surface server message when available, otherwise a clearer default
-                setError(response.message || "Unable to save reservation. Server rejected the request.");
+            try {
+                const response = editingReservationId
+                    ? await updateReservation(editingReservationId, payload)
+                    : await createReservation(payload);
+
+                if (!response.success) {
+                    setError(response.message || "Unable to save reservation. Server rejected the request.");
+                    return;
+                }
+
+                setSuccess(editingReservationId ? "Reservation updated successfully." : "Reservation created successfully.");
+                resetForm();
+                await loadReservations();
+            } catch (err) {
+                const info = interpretReservationError(err);
+
+                if (info.refreshSlots) {
+                    // Reload the server-provided slots for the selected node/date so user can pick another one.
+                    if (formData.nodeId && formData.slotDate) {
+                        const isoDate = formData.slotDate; // yyyy-mm-dd
+                        try {
+                            const slotsResp = await getNodeSlots(formData.nodeId, isoDate);
+                            if (slotsResp?.success) {
+                                // Show top-most message and keep form open for user to choose
+                                setError(info.message || "Slot changed. Availability refreshed.");
+                                // TODO: UI: present slotsResp.data to user (console for now)
+                                console.info("Refreshed slots:", slotsResp.data);
+                            }
+                        } catch (slotErr) {
+                            console.error("Failed to refresh slots:", slotErr);
+                        }
+                    }
+
+                    setError(info.message || "Slot state changed; please pick another slot.");
+                } else if (info.retry) {
+                    setError(info.message || "Slot already reserved. Try another slot.");
+                } else if (info.code === 401) {
+                    setError(info.message);
+                } else {
+                    setError(info.message || "Unable to save reservation. Check the slot is still available and your input is valid.");
+                }
+
                 return;
             }
-
-            setSuccess(
-                editingReservationId
-                    ? "Reservation updated successfully."
-                    : "Reservation created successfully."
-            );
-            resetForm();
-            await loadReservations();
         } catch (error) {
             console.error("Reservation save failed:", error);
             setError(error.response?.data?.message || "Unable to save reservation. Check the slot is still available and your input is valid.");
@@ -247,6 +271,24 @@ const ReservationsPage = () => {
         }));
     };
 
+    // Optional: load and log server slots when node/date selected for editing (GridOperator edits)
+    useEffect(() => {
+        const fetchSlots = async () => {
+            if (!formData.nodeId || !formData.slotDate) return;
+
+            try {
+                const slotsResp = await getNodeSlots(formData.nodeId, formData.slotDate);
+                if (slotsResp?.success) {
+                    console.info("Available slots for edit:", slotsResp.data);
+                }
+            } catch (err) {
+                console.error("Failed to load node slots:", err);
+            }
+        };
+
+        fetchSlots();
+    }, [formData.nodeId, formData.slotDate]);
+
     const handleCopyToken = async (reservation) => {
         if (!reservation.qrCode) return;
 
@@ -260,47 +302,47 @@ const ReservationsPage = () => {
     };
 
     const handleReservationAction = async (reservation, action) => {
-    const actionName = action === "approve" ? "approve" : "cancel";
-    const confirmed = window.confirm(
-        `Are you sure you want to ${actionName} this reservation?`
-    );
-
-    if (!confirmed) return;
-
-    try {
-        setActionId(reservation.id);
-        setError("");
-        setSuccess("");
-
-        // Client-side guard: updates/cancels require at least 12 hours notice
-        const slotDate = reservation.slotDateTime ? new Date(reservation.slotDateTime) : null;
-        if (action !== "approve" && !hasAtLeastHours(slotDate, 12)) {
-            setError("Updates and cancellations must be made at least 12 hours before the reserved slot.");
-            setActionId(null);
-            return;
-        }
-
-        const response = action === "approve" ? await approveReservation(reservation.id) : await cancelReservation(reservation.id);
-
-        if (!response.success) {
-            setError(response.message || "Reservation action failed.");
-            return;
-        }
-
-        setSuccess(
-            action === "approve"
-                ? "Reservation approved successfully."
-                : "Reservation cancelled successfully."
+        const actionName = action === "approve" ? "approve" : "cancel";
+        const confirmed = window.confirm(
+            `Are you sure you want to ${actionName} this reservation?`
         );
 
-        await loadReservations();
-    } catch (error) {
-        console.error("Reservation action failed:", error);
-        setError(error.response?.data?.message || "Unable to update reservation.");
-    } finally {
-        setActionId(null);
-    }
-};
+        if (!confirmed) return;
+
+        try {
+            setActionId(reservation.id);
+            setError("");
+            setSuccess("");
+
+            // Client-side guard: updates/cancels require at least 12 hours notice
+            const slotDate = reservation.slotDateTime ? new Date(reservation.slotDateTime) : null;
+            if (action !== "approve" && !hasAtLeastHours(slotDate, 12)) {
+                setError("Updates and cancellations must be made at least 12 hours before the reserved slot.");
+                setActionId(null);
+                return;
+            }
+
+            const response = action === "approve" ? await approveReservation(reservation.id) : await cancelReservation(reservation.id);
+
+            if (!response.success) {
+                setError(response.message || "Reservation action failed.");
+                return;
+            }
+
+            setSuccess(
+                action === "approve"
+                    ? "Reservation approved successfully."
+                    : "Reservation cancelled successfully."
+            );
+
+            await loadReservations();
+        } catch (error) {
+            console.error("Reservation action failed:", error);
+            setError(error.response?.data?.message || "Unable to update reservation.");
+        } finally {
+            setActionId(null);
+        }
+    };
 
     return (
         <div className="space-y-5">
@@ -315,7 +357,7 @@ const ReservationsPage = () => {
                             : "View energy reservations and their current status."}
                     </p>
                 </div>
-                    
+
                 {/* Creation of reservations is performed by prosumers via the mobile app. */}
                 {/* Web/backoffice does not expose 'Add reservation' to avoid duplicate flows. */}
             </div>
@@ -399,7 +441,7 @@ const ReservationsPage = () => {
                             <select
                                 value={statusFilter}
                                 onChange={(event) => setStatusFilter(event.target.value)}
-                                className="w-full rounded-md border border-[#2a3a56] bg-[#0b1120] px-3 py-2 text-sm text-[#e7ecf5] focus:border-[#f4a93b] focus:outline-none sm:w-36"
+                                className="w-full rounded-md border border-[#2a3a56] bg-[#0b1120] px-3 py-2 text-sm text-[#e7ecf5] focus:outline-none focus:border-[#f4a93b] sm:w-36"
                             >
                                 <option value="All">All statuses</option>
                                 <option value="Pending">Pending</option>
@@ -523,46 +565,46 @@ const ReservationsPage = () => {
                                     {canManageReservations && (
                                         <td className="px-5 py-4">
                                             <div className="flex items-center justify-end gap-1.5">
-                                            {reservation.status === "Pending" && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleReservationAction(reservation, "approve")}
-                                                    disabled={actionId === reservation.id}
-                                                    className="text-xs text-emerald-300 hover:text-emerald-200 border border-emerald-900/40 hover:border-emerald-700/50 disabled:opacity-40 rounded-md px-2.5 py-1.5"
-                                                >
-                                                    {actionId === reservation.id ? "Saving..." : "Approve"}
-                                                </button>
-                                            )}
+                                                {reservation.status === "Pending" && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleReservationAction(reservation, "approve")}
+                                                        disabled={actionId === reservation.id}
+                                                        className="text-xs text-emerald-300 hover:text-emerald-200 border border-emerald-900/40 hover:border-emerald-700/50 disabled:opacity-40 rounded-md px-2.5 py-1.5"
+                                                    >
+                                                        {actionId === reservation.id ? "Saving..." : "Approve"}
+                                                    </button>
+                                                )}
 
-                                            {reservation.status !== "Cancelled" && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleReservationAction(reservation, "cancel")}
-                                                    disabled={actionId === reservation.id}
-                                                    className="text-xs text-red-300 hover:text-red-200 border border-red-900/40 hover:border-red-700/50 disabled:opacity-40 rounded-md px-2.5 py-1.5"
-                                                >
-                                                    Cancel
-                                                </button>
-                                            )}
+                                                {reservation.status !== "Cancelled" && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleReservationAction(reservation, "cancel")}
+                                                        disabled={actionId === reservation.id}
+                                                        className="text-xs text-red-300 hover:text-red-200 border border-red-900/40 hover:border-red-700/50 disabled:opacity-40 rounded-md px-2.5 py-1.5"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                )}
 
-                                            {(reservation.status === "Pending" || reservation.status === "Approved") && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        // Prevent editing within 12 hours
-                                                        const slotDate = reservation.slotDateTime ? new Date(reservation.slotDateTime) : null;
-                                                        if (!hasAtLeastHours(slotDate, 12)) {
-                                                            setError("Reservations can only be updated at least 12 hours before the slot.");
-                                                            return;
-                                                        }
+                                                {(reservation.status === "Pending" || reservation.status === "Approved") && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            // Prevent editing within 12 hours
+                                                            const slotDate = reservation.slotDateTime ? new Date(reservation.slotDateTime) : null;
+                                                            if (!hasAtLeastHours(slotDate, 12)) {
+                                                                setError("Reservations can only be updated at least 12 hours before the slot.");
+                                                                return;
+                                                            }
 
-                                                        openEditForm(reservation);
-                                                    }}
-                                                    className="text-xs text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] rounded-md px-2.5 py-1.5 transition-colors"
-                                                >
-                                                    Edit
-                                                </button>
-                                            )}
+                                                            openEditForm(reservation);
+                                                        }}
+                                                        className="text-xs text-[#a7b2c7] hover:text-[#e7ecf5] border border-[#2a3a56] hover:border-[#3a4a68] rounded-md px-2.5 py-1.5 transition-colors"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                )}
 
                                             </div>
                                         </td>

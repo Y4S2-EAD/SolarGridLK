@@ -12,10 +12,19 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <!-- Mongo2Go removed due to binary compatibility in test environment; tests use local MongoDB by default -->
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SolarGridLK.Application\SolarGridLK.Application.csproj" />
+    <ProjectReference Include="..\..\src\SolarGridLK.Infrastructure\SolarGridLK.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SolarGridLK.Domain\SolarGridLK.Domain.csproj" />
+    <ProjectReference Include="..\..\src\SolarGridLK.API\SolarGridLK.API.csproj" />
   </ItemGroup>
 
 </Project>

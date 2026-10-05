@@ -25,3 +25,19 @@ export const cancelReservation = async (id) => {
     const response = await apiClient.delete(`/reservations/${id}`);
     return response.data;
 };
+
+export const interpretReservationError = (message, status) => {
+    if (status === 401) {
+        return "Your session has expired. Please log in again.";
+    }
+    if (status === 403) {
+        return "You do not have permission to modify reservations.";
+    }
+    if (status === 404) {
+        return message || "Reservation not found.";
+    }
+    if (message && message.toLowerCase().includes("not available")) {
+        return "The requested reservation slot is not available.";
+    }
+    return "An error occurred while processing your request.";
+}

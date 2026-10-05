@@ -16,8 +16,14 @@ data class AvailableSlot(
     val start: String?,
     @SerializedName(value = "end", alternate = ["End"])
     val end: String?,
-    @SerializedName(value = "isAvailable", alternate = ["IsAvailable", "available"])
+    @SerializedName(value = "isAvailable", alternate = ["IsAvailable"])
     val isAvailable: Boolean?,
+    @SerializedName(value = "capacity", alternate = ["Capacity"])
+    val capacity: Int? = null,
+    @SerializedName(value = "reservedCount", alternate = ["ReservedCount"])
+    val reservedCount: Int? = null,
+    @SerializedName(value = "available", alternate = ["Available"])
+    val availableCount: Int? = null,
     @SerializedName(value = "reservationId", alternate = ["ReservationId"])
     val reservationId: String? = null,
     @SerializedName(value = "reservationStatus", alternate = ["ReservationStatus"])

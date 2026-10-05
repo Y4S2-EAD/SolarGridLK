@@ -33,6 +33,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 
 class ProsumerHomeActivity : AppCompatActivity() {
 
@@ -61,6 +62,9 @@ class ProsumerHomeActivity : AppCompatActivity() {
 
     // Fallback static nodes
     private val fallbackNodes = arrayOf("NODE-001", "TESTNODE01", "TESTNODE02")
+
+    // Single action guard to prevent double-tap creates
+    private var isReserving = false
 
     // Track if map picker was launched for modify
     private var pendingModifyReservation: Reservation? = null
@@ -416,11 +420,17 @@ class ProsumerHomeActivity : AppCompatActivity() {
             startUtc
         }
 
+        val capacityInfo = if (slot.availableCount != null && slot.capacity != null) {
+            " [${slot.availableCount}/${slot.capacity}]"
+        } else ""
+
+        val isAvailable = slot.isAvailable == true && (slot.availableCount == null || slot.availableCount > 0)
+
         return when {
-            slot.isAvailable == true -> "🟢 $localDisplay (Available)"
-            slot.reservationStatus.equals("Pending", ignoreCase = true) -> "🟡 $localDisplay (Pending)"
-            slot.reservationStatus.equals("Approved", ignoreCase = true) -> "🔴 $localDisplay (Reserved)"
-            else -> "🔴 $localDisplay (Unavailable)"
+            isAvailable -> "🟢 $localDisplay$capacityInfo (Available)"
+            slot.reservationStatus.equals("Pending", ignoreCase = true) -> "🟡 $localDisplay$capacityInfo (Pending)"
+            slot.reservationStatus.equals("Approved", ignoreCase = true) -> "🔴 $localDisplay$capacityInfo (Reserved)"
+            else -> "🔴 $localDisplay$capacityInfo (Full/Unavailable)"
         }
     }
 
@@ -451,8 +461,10 @@ class ProsumerHomeActivity : AppCompatActivity() {
                         .setTitle("Select New $nodeName Slot ($dayOfWeek)")
                         .setItems(displayLabels) { _, which ->
                             val selectedSlot = slotList[which]
-                            if (selectedSlot.isAvailable != true) {
-                                showError("This slot is already reserved or pending. Please choose an available green 🟢 slot.")
+                            val isAvailable = selectedSlot.isAvailable == true && (selectedSlot.availableCount == null || selectedSlot.availableCount > 0)
+
+                            if (!isAvailable) {
+                                showError("This slot is full or reserved. Please choose an available green 🟢 slot.")
                                 return@setItems
                             }
 
@@ -481,7 +493,7 @@ class ProsumerHomeActivity : AppCompatActivity() {
         dateIsoString: String,
         dayOfWeek: String
     ) {
-        // Fetch server-provided 30-minute slots with availability and reservation status
+        // Fetch server-provided 30-minute slots with availability and capacity
         lifecycleScope.launch {
             try {
                 showLoading(true)
@@ -500,8 +512,10 @@ class ProsumerHomeActivity : AppCompatActivity() {
                         .setTitle("Select $nodeName Slot ($dayOfWeek)")
                         .setItems(displayLabels) { _, which ->
                             val selectedSlot = slotList[which]
-                            if (selectedSlot.isAvailable != true) {
-                                showError("This slot is already reserved or pending. Please choose an available green 🟢 slot.")
+                            val isAvailable = selectedSlot.isAvailable == true && (selectedSlot.availableCount == null || selectedSlot.availableCount > 0)
+
+                            if (!isAvailable) {
+                                showError("This slot is full or reserved. Please choose an available green 🟢 slot.")
                                 return@setItems
                             }
 
@@ -531,17 +545,21 @@ class ProsumerHomeActivity : AppCompatActivity() {
             return
         }
 
+        if (isReserving) return
+        isReserving = true
+
         lifecycleScope.launch {
             try {
                 showLoading(true)
                 hideError()
 
+                val idempotencyKey = UUID.randomUUID().toString()
                 val request = CreateReservationRequest(
                     prosumerNic = prosumerNic,
                     nodeId = nodeId,
                     slotDateTime = newSlotDateTimeUtc
                 )
-                val response = reservationRepository.createReservation(request)
+                val response = reservationRepository.createReservation(request, idempotencyKey)
 
                 if (response.isSuccessful && response.body()?.success == true) {
                     showSuccessDialog(
@@ -551,18 +569,29 @@ class ProsumerHomeActivity : AppCompatActivity() {
                     loadDashboard()
                 } else {
                     val rawError = response.errorBody()?.string()
-                    // If 409 conflict occurred, refresh dashboard and show specific message
-                    if (response.code() == 409) {
-                        showError("Slot already reserved by another prosumer. Refreshing slots...")
-                        loadDashboard()
-                    } else {
-                        showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Failed to create reservation."))
+                    when (response.code()) {
+                        409 -> {
+                            showError("Slot full. Refreshing availability...")
+                            loadDashboard()
+                        }
+                        412 -> {
+                            val msg = parseErrorMessage(rawError, response.code(), "Reservation not permitted due to timing rules.")
+                            showError(msg)
+                        }
+                        401, 403 -> {
+                            sessionManager.clearSession()
+                            openLogin()
+                        }
+                        else -> {
+                            showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Failed to create reservation."))
+                        }
                     }
                 }
             } catch (e: Exception) {
                 showError("Error creating reservation: ${e.message}")
             } finally {
                 showLoading(false)
+                isReserving = false
             }
         }
     }
@@ -590,11 +619,22 @@ class ProsumerHomeActivity : AppCompatActivity() {
                     loadDashboard()
                 } else {
                     val rawError = response.errorBody()?.string()
-                    if (response.code() == 409) {
-                        showError("Slot already reserved by another prosumer. Refreshing slots...")
-                        loadDashboard()
-                    } else {
-                        showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Modification failed."))
+                    when (response.code()) {
+                        409 -> {
+                            showError("Slot full. Refreshing availability...")
+                            loadDashboard()
+                        }
+                        412 -> {
+                            val msg = parseErrorMessage(rawError, response.code(), "Modification not permitted due to timing rules.")
+                            showError(msg)
+                        }
+                        401, 403 -> {
+                            sessionManager.clearSession()
+                            openLogin()
+                        }
+                        else -> {
+                            showError(parseErrorMessage(rawError, response.code(), response.body()?.message ?: "Modification failed."))
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -716,22 +756,35 @@ class ProsumerHomeActivity : AppCompatActivity() {
 
     private fun parseErrorMessage(rawJson: String?, responseCode: Int = 0, fallbackMessage: String? = null): String {
         // Extract user-friendly error message from JSON error body or status code
-        if (responseCode == 401) {
+        if (responseCode == 401 || responseCode == 403) {
             return "Session expired. Please log in again."
         }
         if (responseCode == 409) {
-            return "Slot already reserved by another user. Please select a different slot."
+            return "Slot full. Refreshing availability..."
+        }
+        if (responseCode == 412) {
+            val extracted = extractJsonMessage(rawJson)
+            return extracted.ifBlank { "Reservation not permitted due to timing rules." }
+        }
+        if (responseCode == 400) {
+            val extracted = extractJsonMessage(rawJson)
+            return extracted.ifBlank { "Invalid reservation request." }
         }
         if (!rawJson.isNullOrBlank()) {
-            try {
-                val json = JSONObject(rawJson)
-                val msg = json.optString("message", "")
-                if (msg.isNotBlank()) return msg
-            } catch (e: Exception) {
-                if (rawJson.length < 100) return rawJson
-            }
+            val extracted = extractJsonMessage(rawJson)
+            if (extracted.isNotBlank()) return extracted
         }
         return fallbackMessage ?: "Operation failed. Please try again."
+    }
+
+    private fun extractJsonMessage(rawJson: String?): String {
+        if (rawJson.isNullOrBlank()) return ""
+        return try {
+            val json = JSONObject(rawJson)
+            json.optString("message", "")
+        } catch (_: Exception) {
+            if (rawJson.length < 100) rawJson else ""
+        }
     }
 
     private fun showSuccessDialog(title: String, message: String) {

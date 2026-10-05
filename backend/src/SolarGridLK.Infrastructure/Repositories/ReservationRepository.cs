@@ -13,7 +13,7 @@ using SolarGridLK.Infrastructure.MongoDB;
 
 namespace SolarGridLK.Infrastructure.Repositories;
 
-public class ReservationRepository : IReservationRepository
+public class ReservationRepository : IReservationRepository, SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository
 {
     private readonly IMongoCollection<Reservation> _reservations;
 
@@ -61,10 +61,61 @@ public class ReservationRepository : IReservationRepository
         await _reservations.InsertOneAsync(reservation);
     }
 
+    internal async Task CreateAsync(global::MongoDB.Driver.IClientSessionHandle session, Reservation reservation)
+    {
+        await _reservations.InsertOneAsync(session, reservation);
+    }
+
+    async Task SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.CreateAsync(global::MongoDB.Driver.IClientSessionHandle session, Reservation reservation)
+    {
+        await CreateAsync(session, reservation);
+    }
+
+    // Count reservations for a specific node and exact slot start (UTC)
+    // Count reservations for a specific node and exact slot start (UTC)
+    public async Task<int> CountReservationsForSlotAsync(string nodeId, DateTime slotStartUtc)
+    {
+        return (int)await _reservations.CountDocumentsAsync(r => r.NodeId == nodeId && r.SlotDateTime == slotStartUtc && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
+    }
+
+    // Session-aware count to be used inside transactions to ensure consistent reads
+    internal async Task<int> CountReservationsForSlotAsync(global::MongoDB.Driver.IClientSessionHandle session, string nodeId, DateTime slotStartUtc)
+    {
+        return (int)await _reservations.CountDocumentsAsync(session, r => r.NodeId == nodeId && r.SlotDateTime == slotStartUtc && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
+    }
+
+    // Session-aware count excluding a specific reservation id (used when updating a reservation)
+    internal async Task<int> CountReservationsForSlotExcludingAsync(global::MongoDB.Driver.IClientSessionHandle session, string nodeId, DateTime slotStartUtc, string excludeReservationId)
+    {
+        return (int)await _reservations.CountDocumentsAsync(session, r => r.NodeId == nodeId && r.SlotDateTime == slotStartUtc && r.Id != excludeReservationId && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
+    }
+
+    async Task<int> SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.CountReservationsForSlotAsync(global::MongoDB.Driver.IClientSessionHandle session, string nodeId, DateTime slotStartUtc)
+    {
+        return await CountReservationsForSlotAsync(session, nodeId, slotStartUtc);
+    }
+
+    async Task<int> SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.CountReservationsForSlotExcludingAsync(global::MongoDB.Driver.IClientSessionHandle session, string nodeId, DateTime slotStartUtc, string excludeReservationId)
+    {
+        return await CountReservationsForSlotExcludingAsync(session, nodeId, slotStartUtc, excludeReservationId);
+    }
+
+    // Atomic reservation creation using a SlotCounters collection is handled elsewhere; provide helpers as needed.
+
     public async Task UpdateAsync(Reservation reservation)
     {
         //Replace an existing reservation document with the updated document
         await _reservations.ReplaceOneAsync(existing => existing.Id == reservation.Id, reservation);
+    }
+
+    internal async Task UpdateAsync(global::MongoDB.Driver.IClientSessionHandle session, Reservation reservation)
+    {
+        await _reservations.ReplaceOneAsync(session, existing => existing.Id == reservation.Id, reservation);
+    }
+
+    async Task SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository.UpdateAsync(global::MongoDB.Driver.IClientSessionHandle session, Reservation reservation)
+    {
+        await UpdateAsync(session, reservation);
     }
 
     public async Task<Reservation?> GetByQrCodeAsync(string qrCode)
@@ -80,5 +131,7 @@ public class ReservationRepository : IReservationRepository
         var end = start.AddDays(1);
         return await _reservations.Find(r => r.NodeId == nodeId && r.SlotDateTime >= start && r.SlotDateTime < end && r.Id != excludeReservationId).ToListAsync();
     }
+
+
 
 }

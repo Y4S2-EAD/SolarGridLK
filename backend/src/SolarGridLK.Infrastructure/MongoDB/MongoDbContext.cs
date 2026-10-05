@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using MongoDB.Bson;
 
 namespace SolarGridLK.Infrastructure.MongoDB;
 
@@ -17,6 +18,31 @@ public class MongoDbContext
 
     public IMongoCollection<T> GetCollection<T>(string name)
     {
-        return _database.GetCollection<T>(name);
+        // Ensure known indexes are created when first requesting certain collections
+        var collection = _database.GetCollection<T>(name);
+
+        if (name == MongoCollectionNames.EnergyReservations)
+        {
+            // Create indexes used by reservations: NodeId + SlotDateTime for fast lookup
+            var indexKeys = Builders<BsonDocument>.IndexKeys
+                .Ascending("NodeId")
+                .Ascending("SlotDateTime");
+
+            var indexModel = new CreateIndexModel<BsonDocument>(indexKeys);
+            _database.GetCollection<BsonDocument>(name).Indexes.CreateOne(indexModel);
+        }
+
+        if (name == MongoCollectionNames.SlotCounters)
+        {
+            // Ensure unique slot counter index on NodeId + SlotStartUtc
+            var indexKeys = Builders<BsonDocument>.IndexKeys
+                .Ascending("NodeId")
+                .Ascending("SlotStartUtc");
+
+            var indexModel = new CreateIndexModel<BsonDocument>(indexKeys, new CreateIndexOptions { Unique = true });
+            _database.GetCollection<BsonDocument>(name).Indexes.CreateOne(indexModel);
+        }
+
+        return collection;
     }
 }

@@ -34,6 +34,16 @@ builder.Services.AddSingleton(mongoSettings);
 // MongoDB context
 builder.Services.AddSingleton<MongoDbContext>();
 
+// Register MongoClient for transactions and session support (register as the IMongoClient interface)
+builder.Services.AddSingleton<global::MongoDB.Driver.IMongoClient>(sp =>
+{
+    var settings = sp.GetRequiredService<MongoDbSettings>();
+    return new global::MongoDB.Driver.MongoClient(settings.ConnectionString);
+});
+
+// SlotCounterRepository (fallback)
+builder.Services.AddScoped<SolarGridLK.Infrastructure.Repositories.SlotCounterRepository>();
+
 // JWT
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings"));
@@ -87,8 +97,13 @@ builder.Services.AddScoped<IProsumerService, ProsumerService>();
 builder.Services.AddScoped<IMicrogridNodeRepository, MicrogridNodeRepository>();
 builder.Services.AddScoped<IMicrogridNodeService, MicrogridNodeService>();
 builder.Services.AddScoped<IReservationRepository, ReservationRepository>();
+// Register infrastructure reservation repository to expose session-aware methods
+builder.Services.AddScoped<SolarGridLK.Infrastructure.Interfaces.IReservationInfrastructureRepository>(sp => sp.GetRequiredService<ReservationRepository>());
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<DatabaseSeeder>();
+
+// Infrastructure transaction runner
+builder.Services.AddScoped<SolarGridLK.Infrastructure.Transactions.IMongoTransactionRunner, SolarGridLK.Infrastructure.Transactions.MongoTransactionRunner>();
 
 builder.Services.AddScoped<IQrService, QrService>();
 
