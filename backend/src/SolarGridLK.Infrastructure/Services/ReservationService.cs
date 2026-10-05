@@ -16,11 +16,17 @@ public class ReservationService : IReservationService
 {
     private readonly IReservationRepository _reservationRepository;
     private readonly IMicrogridNodeService _nodeService;
+    private readonly global::MongoDB.Driver.IMongoClient _mongoClient;
+    private readonly SolarGridLK.Infrastructure.Repositories.SlotCounterRepository _slotCounterRepository;
+    private readonly SolarGridLK.Infrastructure.Transactions.IMongoTransactionRunner _transactionRunner;
 
-    public ReservationService(IReservationRepository reservationRepository, IMicrogridNodeService nodeService)
+    public ReservationService(IReservationRepository reservationRepository, IMicrogridNodeService nodeService, global::MongoDB.Driver.IMongoClient mongoClient, SolarGridLK.Infrastructure.Repositories.SlotCounterRepository slotCounterRepository, SolarGridLK.Infrastructure.Transactions.IMongoTransactionRunner transactionRunner)
     {
         _reservationRepository = reservationRepository;
         _nodeService = nodeService;
+        _mongoClient = mongoClient;
+        _slotCounterRepository = slotCounterRepository;
+        _transactionRunner = transactionRunner;
     }
     public async Task<ReservationDto> CreateReservationAsync(CreateReservationDto request)
     {
@@ -53,16 +59,40 @@ public class ReservationService : IReservationService
                 ? "Slot already reserved." : "Slot not available.");
         }
 
-        var reservation = new Reservation
+        // Use a MongoDB transaction to atomically insert the reservation and protect against overbooking.
+        // Fetch node capacity first (node record is read-only for capacity checks)
+        var node = await _nodeService.GetByNodeIdAsync(request.NodeId.Trim());
+        if (node == null)
         {
-            ProsumerNic = request.ProsumerNic,
-            NodeId = request.NodeId.Trim(),
-            SlotDateTime = request.SlotDateTime,
-            Status = ReservationStatus.Pending,
-            CreatedAt = DateTime.UtcNow,
-            LastModifiedAt = DateTime.UtcNow
-        };
-        await _reservationRepository.CreateAsync(reservation);
+            throw new InvalidOperationException("Node not found.");
+        }
+
+        Reservation reservation = null!;
+        await _transactionRunner.RunInTransactionAsync<bool>(async s =>
+        {
+            // Double-check capacity inside the transaction using session-aware count
+            var reservedCount = await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).CountReservationsForSlotAsync(s, request.NodeId.Trim(), request.SlotDateTime);
+            if (reservedCount >= node.AvailableBatterySlots)
+            {
+                throw new InvalidOperationException("Slot capacity reached.");
+            }
+
+            reservation = new Reservation
+            {
+                ProsumerNic = request.ProsumerNic,
+                NodeId = request.NodeId.Trim(),
+                SlotDateTime = request.SlotDateTime,
+                Status = ReservationStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                LastModifiedAt = DateTime.UtcNow
+            };
+
+            // Insert the reservation using the session (use concrete repository to access session-aware overload)
+            await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).CreateAsync(s, reservation);
+
+            return true;
+        });
+
         return MapToDto(reservation);
     }
 
@@ -130,21 +160,25 @@ public class ReservationService : IReservationService
         {
             return null;
         }
+
         // Reject an update if the reservation is completed or cancelled
         if (reservation.Status == ReservationStatus.Completed || reservation.Status == ReservationStatus.Cancelled)
         {
             throw new InvalidOperationException("Cannot modify a completed or cancelled reservation.");
         }
+
         //Reject an updation if the slot is less than 12 hours away
         if (reservation.SlotDateTime - DateTime.UtcNow < TimeSpan.FromHours(12))
         {
             throw new InvalidOperationException("Update require at least 12 hours notice.");
         }
+
         // Reject an update if the new slot is in the past
         if (request.SlotDateTime < DateTime.UtcNow)
         {
             throw new InvalidOperationException("Cannot reserve a slot in the past.");
         }
+
         // Reject an update if the new slot is more than 7 days into the future
         if (request.SlotDateTime > DateTime.UtcNow.AddDays(7))
         {
@@ -157,19 +191,39 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException("Node ID is required.");
         }
 
-        // The requested time must exactly match one of this node's generated, available slots (excluding this reservation's own current slot).
+        // Validate destination slot exists for the node (excluding this reservation)
         var slots = await _nodeService.GetAvailableSlotsExcludingReservationAsync(request.NodeId.Trim(), request.SlotDateTime.Date, reservation.Id);
-        var match = slots.FirstOrDefault(s => s.Start == request.SlotDateTime);
-        if (match == null || !match.IsAvailable)
+        var match = slots.FirstOrDefault(s => Math.Abs((s.Start - request.SlotDateTime).TotalMinutes) < 1);
+        if (match == null)
         {
             throw new InvalidOperationException("Slot not available.");
         }
 
-        reservation.NodeId = request.NodeId.Trim();
-        reservation.SlotDateTime = request.SlotDateTime;
-        reservation.LastModifiedAt = DateTime.UtcNow;
-        await _reservationRepository.UpdateAsync(reservation);
-        return  MapToDto(reservation);
+        // Perform transaction: ensure capacity at destination slot excluding this reservation, then update
+        var node = await _nodeService.GetByNodeIdAsync(request.NodeId.Trim());
+        if (node == null)
+        {
+            throw new InvalidOperationException("Node not found.");
+        }
+
+        await _transactionRunner.RunInTransactionAsync<bool>(async s =>
+        {
+            var reservedCount = await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).CountReservationsForSlotExcludingAsync(s, request.NodeId.Trim(), request.SlotDateTime, reservation.Id);
+            if (reservedCount >= node.AvailableBatterySlots)
+            {
+                throw new InvalidOperationException("Slot capacity reached.");
+            }
+
+            reservation.NodeId = request.NodeId.Trim();
+            reservation.SlotDateTime = request.SlotDateTime;
+            reservation.LastModifiedAt = DateTime.UtcNow;
+
+            await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).UpdateAsync(s, reservation);
+
+            return true;
+        });
+
+        return MapToDto(reservation);
     }
 
     public async Task<ReservationDto?> CancelReservationAsync(string id)
@@ -179,19 +233,29 @@ public class ReservationService : IReservationService
         {
             return null;
         }
+
         // Reject a cancellation if the reservation is completed or already cancelled
         if (reservation.Status == ReservationStatus.Completed || reservation.Status == ReservationStatus.Cancelled)
         {
             throw new InvalidOperationException("Cannot cancel a completed or already cancelled reservation.");
         }
+
         //Reject a cancellation if the slot is less than 12 hours away
         if (reservation.SlotDateTime - DateTime.UtcNow < TimeSpan.FromHours(12))
         {
             throw new InvalidOperationException("Cancellation require at least 12 hours notice.");
         }
-        reservation.Status = ReservationStatus.Cancelled;
-        reservation.LastModifiedAt = DateTime.UtcNow;
-        await _reservationRepository.UpdateAsync(reservation);
+
+        await _transactionRunner.RunInTransactionAsync<bool>(async s =>
+        {
+            reservation.Status = ReservationStatus.Cancelled;
+            reservation.LastModifiedAt = DateTime.UtcNow;
+
+            await ((SolarGridLK.Infrastructure.Repositories.ReservationRepository)_reservationRepository).UpdateAsync(s, reservation);
+
+            return true;
+        });
+
         return MapToDto(reservation);
     }
 

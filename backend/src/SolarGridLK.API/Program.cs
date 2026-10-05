@@ -34,6 +34,16 @@ builder.Services.AddSingleton(mongoSettings);
 // MongoDB context
 builder.Services.AddSingleton<MongoDbContext>();
 
+// Register MongoClient for transactions and session support
+builder.Services.AddSingleton(sp =>
+{
+    var settings = sp.GetRequiredService<MongoDbSettings>();
+    return new MongoDB.Driver.MongoClient(settings.ConnectionString);
+});
+
+// SlotCounterRepository (fallback)
+builder.Services.AddScoped<SolarGridLK.Infrastructure.Repositories.SlotCounterRepository>();
+
 // JWT
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings"));
@@ -89,6 +99,9 @@ builder.Services.AddScoped<IMicrogridNodeService, MicrogridNodeService>();
 builder.Services.AddScoped<IReservationRepository, ReservationRepository>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<DatabaseSeeder>();
+
+// Infrastructure transaction runner
+builder.Services.AddScoped<SolarGridLK.Infrastructure.Transactions.IMongoTransactionRunner, SolarGridLK.Infrastructure.Transactions.MongoTransactionRunner>();
 
 builder.Services.AddScoped<IQrService, QrService>();
 

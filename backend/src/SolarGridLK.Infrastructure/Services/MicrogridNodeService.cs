@@ -305,11 +305,19 @@ public class MicrogridNodeService : IMicrogridNodeService
                 var reservation = reservations.FirstOrDefault(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1
                                                                    && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
                 var booked = reservation != null;
+                // Determine reserved count for this slot (Pending or Approved)
+                var reservedCount = reservations.Count(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1 && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
+                var capacity = node.AvailableBatterySlots;
+                var available = Math.Max(0, capacity - reservedCount);
+
                 var dto = new AvailableSlotDto
                 {
                     Start = s,
                     End = slotEnd,
-                    IsAvailable = isFuture && !booked,
+                    Capacity = capacity,
+                    ReservedCount = reservedCount,
+                    Available = available,
+                    IsAvailable = isFuture && available > 0,
                     ReservationId = reservation?.Id,
                     ReservationStatus = reservation?.Status.ToString(),
                     ReservedBy = reservation?.ProsumerNic
@@ -378,9 +386,6 @@ public class MicrogridNodeService : IMicrogridNodeService
 
         // Exclude the reservation being updated, so its own current slot doesn't block itself.
         var reservations = await _reservationRepository.GetByNodeIdAndDateExcludingAsync(node.NodeId, date, excludeReservationId);
-        var bookedStarts = new HashSet<DateTime>(reservations
-            .Where(r => r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved)
-            .Select(r => r.SlotDateTime));
 
         var slots = new List<AvailableSlotDto>();
         foreach (var w in windows)
@@ -394,8 +399,25 @@ public class MicrogridNodeService : IMicrogridNodeService
             {
                 var slotEnd = s.AddMinutes(slotMinutes);
                 var isFuture = s > DateTime.UtcNow;
-                var booked = bookedStarts.Contains(s);
-                slots.Add(new AvailableSlotDto { Start = s, End = slotEnd, IsAvailable = isFuture && !booked });
+                var reservation = reservations.FirstOrDefault(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1
+                                                                   && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
+                var reservedCount = reservations.Count(r => Math.Abs((r.SlotDateTime - s).TotalMinutes) < 1
+                                                            && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.Approved));
+                var capacity = node.AvailableBatterySlots;
+                var available = Math.Max(0, capacity - reservedCount);
+
+                slots.Add(new AvailableSlotDto
+                {
+                    Start = s,
+                    End = slotEnd,
+                    Capacity = capacity,
+                    ReservedCount = reservedCount,
+                    Available = available,
+                    IsAvailable = isFuture && available > 0,
+                    ReservationId = reservation?.Id,
+                    ReservationStatus = reservation?.Status.ToString(),
+                    ReservedBy = reservation?.ProsumerNic
+                });
                 s = slotEnd;
             }
         }

@@ -27,6 +27,11 @@ public interface IReservationRepository
 
     Task UpdateAsync(Reservation reservation);
 
+    // Count reservations for a specific node and exact slot start (UTC)
+    Task<int> CountReservationsForSlotAsync(string nodeId, DateTime slotStartUtc);
+
+    // (Session-aware insert/update are implemented in the infrastructure repository when needed.)
+
     Task<List<Reservation>> GetByNodeIdAndDateExcludingAsync(string nodeId, DateTime date, string excludeReservationId);
 
 }
