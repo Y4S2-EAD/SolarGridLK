@@ -1,0 +1,5 @@
+<!-- bg_pill_flagged.xml -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#1AF87171"/>
+    <corners android:radius="20dp"/>
+</shape>

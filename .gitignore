@@ -1,1 +1,188 @@
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+
+# Visual Studio
+.vs/
+.vscode/
+
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+*.userprefs
+
+# Visual Studio cache
+*.VC.db
+*.VC.VC.opendb
+
+# Test results
+TestResults/
+*.trx
+
+# Coverage
+coverage/
+*.coverage
+*.coveragexml
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# Rider
+.idea/
+
+# Generated files
+Generated/
+
+
+# Local environment configuration
+appsettings.Local.json
+
+# Local secrets
+secrets.json
+
+# User secrets
+secrets/
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+
+# Vite
+.vite/
+
+# Test coverage
+coverage/
+
+# Environment files
+web/.env
+web/.env.*
+!web/.env.example
+
+# npm logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+
+# Gradle
+.gradle/
+**/.gradle/
+
+# Build output
+**/build/
+
+# Local configuration
+local.properties
+
+# Android Studio
+.idea/
+
+# Android Studio generated files
+*.iml
+*.iws
+*.ipr
+
+# Kotlin
+*.kotlin_module
+
+# Native build
+.externalNativeBuild/
+.cxx/
+
+# APK / AAB
+*.apk
+*.aab
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services configuration
+google-services.json
+
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# MongoDB local data
+data/db/
+
+# MongoDB logs
+*.log
+
+
+
+*.log
+logs/
+
+
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Certificates
+*.cer
+*.crt
+
+# SSH keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+
+
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+
+
+# Temporary exports
+*.zip
+*.rar
+*.7z
+
+# Temporary screenshots
+screenshots/temp/
+
+# Temporary documentation files
+docs/temp/
